@@ -222,7 +222,7 @@ void __stdcall hookD3D11DrawIndexed(ID3D11DeviceContext* pContext, UINT IndexCou
 {
 	//get stride
 	pContext->IAGetVertexBuffers(0, 1, &vBuffer, &Stride, &vBufferOffset);
-	vBuffer->Release();
+	if (vBuffer != NULL){ vBuffer->Release(); vBuffer = NULL; }
 	
 	//wallhack example
 	if(Stride == 32) //&& IndexCount == 7821) //models
