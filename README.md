@@ -5,4 +5,4 @@ D3D11 Hook Wallhack x86/x64
 - compile with visual studio (creates .dll)
 - inject .dll into d3d11 game
 
-Credits: evolution536
+Credits: dracorx, evolution536
