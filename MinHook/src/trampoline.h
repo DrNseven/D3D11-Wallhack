@@ -1,6 +1,6 @@
 ﻿/*
  *  MinHook - The Minimalistic API Hooking Library for x64/x86
- *  Copyright (C) 2009-2015 Tsuda Kageyu.
+ *  Copyright (C) 2009-2017 Tsuda Kageyu.
  *  All rights reserved.
  *
  *  Redistribution and use in source and binary forms, with or without
@@ -93,7 +93,7 @@ typedef struct _TRAMPOLINE
     LPVOID pDetour;         // [In] Address of the detour function.
     LPVOID pTrampoline;     // [In] Buffer address for the trampoline and relay function.
 
-#ifdef _M_X64
+#if defined(_M_X64) || defined(__x86_64__)
     LPVOID pRelay;          // [Out] Address of the relay function.
 #endif
     BOOL   patchAbove;      // [Out] Should use the hot patch area?

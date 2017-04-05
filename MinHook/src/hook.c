@@ -1,6 +1,6 @@
 ﻿/*
  *  MinHook - The Minimalistic API Hooking Library for x64/x86
- *  Copyright (C) 2009-2015 Tsuda Kageyu.
+ *  Copyright (C) 2009-2017 Tsuda Kageyu.
  *  All rights reserved.
  *
  *  Redistribution and use in source and binary forms, with or without
@@ -26,8 +26,6 @@
  *  SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#define STRICT
-#define _WIN32_WINNT 0x0501
 #include <windows.h>
 #include <tlhelp32.h>
 #include <limits.h>
@@ -67,9 +65,9 @@ typedef struct _HOOK_ENTRY
     LPVOID pTrampoline;         // Address of the trampoline function.
     UINT8  backup[8];           // Original prologue of the target function.
 
-    BOOL   patchAbove  : 1;     // Uses the hot patch area.
-    BOOL   isEnabled   : 1;     // Enabled.
-    BOOL   queueEnable : 1;     // Queued for enabling/disabling when != isEnabled.
+    UINT8  patchAbove  : 1;     // Uses the hot patch area.
+    UINT8  isEnabled   : 1;     // Enabled.
+    UINT8  queueEnable : 1;     // Queued for enabling/disabling when != isEnabled.
 
     UINT   nIP : 4;             // Count of the instruction boundaries.
     UINT8  oldIPs[8];           // Instruction boundaries of the target function.
@@ -175,7 +173,7 @@ static DWORD_PTR FindOldIP(PHOOK_ENTRY pHook, DWORD_PTR ip)
             return (DWORD_PTR)pHook->pTarget + pHook->oldIPs[i];
     }
 
-#ifdef _M_X64
+#if defined(_M_X64) || defined(__x86_64__)
     // Check relay function.
     if (ip == (DWORD_PTR)pHook->pDetour)
         return (DWORD_PTR)pHook->pTarget;
@@ -204,7 +202,7 @@ static void ProcessThreadIPs(HANDLE hThread, UINT pos, UINT action)
     // move IP to the proper address.
 
     CONTEXT c;
-#ifdef _M_X64
+#if defined(_M_X64) || defined(__x86_64__)
     DWORD64 *pIP = &c.Rip;
 #else
     DWORD   *pIP = &c.Eip;
@@ -241,7 +239,7 @@ static void ProcessThreadIPs(HANDLE hThread, UINT pos, UINT action)
             enable = TRUE;
             break;
 
-        case ACTION_APPLY_QUEUED:
+        default: // ACTION_APPLY_QUEUED
             enable = pHook->queueEnable;
             break;
         }
@@ -552,8 +550,8 @@ MH_STATUS WINAPI MH_CreateHook(LPVOID pTarget, LPVOID pDetour, LPVOID *ppOrigina
                 {
                     TRAMPOLINE ct;
 
-                    ct.pTarget = pTarget;
-                    ct.pDetour = pDetour;
+                    ct.pTarget     = pTarget;
+                    ct.pDetour     = pDetour;
                     ct.pTrampoline = pBuffer;
                     if (CreateTrampolineFunction(&ct))
                     {
@@ -561,7 +559,7 @@ MH_STATUS WINAPI MH_CreateHook(LPVOID pTarget, LPVOID pDetour, LPVOID *ppOrigina
                         if (pHook != NULL)
                         {
                             pHook->pTarget     = ct.pTarget;
-#ifdef _M_X64
+#if defined(_M_X64) || defined(__x86_64__)
                             pHook->pDetour     = ct.pRelay;
 #else
                             pHook->pDetour     = ct.pDetour;
