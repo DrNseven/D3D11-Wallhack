@@ -69,7 +69,7 @@ ID3D11ShaderResourceView* ShaderResourceView;
 
 //used for logging/cycling through values
 bool logger = false;
-int countnum = 500;
+int countnum = -1;
 char szString[64];
 
 //==========================================================================================================================
