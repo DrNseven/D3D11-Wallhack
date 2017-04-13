@@ -1,9 +1,9 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Express 14 for Windows Desktop
-VisualStudioVersion = 14.0.24720.0
+VisualStudioVersion = 14.0.25420.1
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "d3d11hook", "d3d11hook.vcxproj", "{EDB98C18-4235-4D6A-B4BD-13BAA97840BC}"
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "d3d11hook", "d3d11hook.vcxproj", "{119F3BCC-4D4E-4FDA-877E-A708963BB87A}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -13,14 +13,14 @@ Global
 		Release|x86 = Release|x86
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
-		{EDB98C18-4235-4D6A-B4BD-13BAA97840BC}.Debug|x64.ActiveCfg = Debug|x64
-		{EDB98C18-4235-4D6A-B4BD-13BAA97840BC}.Debug|x64.Build.0 = Debug|x64
-		{EDB98C18-4235-4D6A-B4BD-13BAA97840BC}.Debug|x86.ActiveCfg = Debug|Win32
-		{EDB98C18-4235-4D6A-B4BD-13BAA97840BC}.Debug|x86.Build.0 = Debug|Win32
-		{EDB98C18-4235-4D6A-B4BD-13BAA97840BC}.Release|x64.ActiveCfg = Release|x64
-		{EDB98C18-4235-4D6A-B4BD-13BAA97840BC}.Release|x64.Build.0 = Release|x64
-		{EDB98C18-4235-4D6A-B4BD-13BAA97840BC}.Release|x86.ActiveCfg = Release|Win32
-		{EDB98C18-4235-4D6A-B4BD-13BAA97840BC}.Release|x86.Build.0 = Release|Win32
+		{119F3BCC-4D4E-4FDA-877E-A708963BB87A}.Debug|x64.ActiveCfg = Debug|x64
+		{119F3BCC-4D4E-4FDA-877E-A708963BB87A}.Debug|x64.Build.0 = Debug|x64
+		{119F3BCC-4D4E-4FDA-877E-A708963BB87A}.Debug|x86.ActiveCfg = Debug|Win32
+		{119F3BCC-4D4E-4FDA-877E-A708963BB87A}.Debug|x86.Build.0 = Debug|Win32
+		{119F3BCC-4D4E-4FDA-877E-A708963BB87A}.Release|x64.ActiveCfg = Release|x64
+		{119F3BCC-4D4E-4FDA-877E-A708963BB87A}.Release|x64.Build.0 = Release|x64
+		{119F3BCC-4D4E-4FDA-877E-A708963BB87A}.Release|x86.ActiveCfg = Release|Win32
+		{119F3BCC-4D4E-4FDA-877E-A708963BB87A}.Release|x86.Build.0 = Release|Win32
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

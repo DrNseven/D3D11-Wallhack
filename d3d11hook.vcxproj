@@ -19,7 +19,7 @@
     </ProjectConfiguration>
   </ItemGroup>
   <PropertyGroup Label="Globals">
-    <ProjectGuid>{EDB98C18-4235-4D6A-B4BD-13BAA97840BC}</ProjectGuid>
+    <ProjectGuid>{119F3BCC-4D4E-4FDA-877E-A708963BB87A}</ProjectGuid>
     <Keyword>Win32Proj</Keyword>
     <RootNamespace>d3d11hook</RootNamespace>
     <WindowsTargetPlatformVersion>8.1</WindowsTargetPlatformVersion>
@@ -36,7 +36,7 @@
     <UseDebugLibraries>false</UseDebugLibraries>
     <PlatformToolset>v140</PlatformToolset>
     <WholeProgramOptimization>true</WholeProgramOptimization>
-    <CharacterSet>NotSet</CharacterSet>
+    <CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
     <ConfigurationType>DynamicLibrary</ConfigurationType>
@@ -116,14 +116,12 @@
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <PreprocessorDefinitions>WIN32;NDEBUG;_WINDOWS;_USRDLL;D3D11HOOK_EXPORTS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>$(DXSDK_DIR)include;$(IncludePath)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalLibraryDirectories>$(DXSDK_DIR)lib\x86;$(LibraryPath)</AdditionalLibraryDirectories>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -135,16 +133,40 @@
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <PreprocessorDefinitions>NDEBUG;_WINDOWS;_USRDLL;D3D11HOOK_EXPORTS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>$(DXSDK_DIR)include;$(IncludePath)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalLibraryDirectories>$(DXSDK_DIR)lib\x64;$(LibraryPath)</AdditionalLibraryDirectories>
     </Link>
   </ItemDefinitionGroup>
+  <ItemGroup>
+    <ClInclude Include="FW1FontWrapper\CFW1ColorRGBA.h" />
+    <ClInclude Include="FW1FontWrapper\CFW1DWriteRenderTarget.h" />
+    <ClInclude Include="FW1FontWrapper\CFW1Factory.h" />
+    <ClInclude Include="FW1FontWrapper\CFW1FontWrapper.h" />
+    <ClInclude Include="FW1FontWrapper\CFW1GlyphAtlas.h" />
+    <ClInclude Include="FW1FontWrapper\CFW1GlyphProvider.h" />
+    <ClInclude Include="FW1FontWrapper\CFW1GlyphRenderStates.h" />
+    <ClInclude Include="FW1FontWrapper\CFW1GlyphSheet.h" />
+    <ClInclude Include="FW1FontWrapper\CFW1GlyphVertexDrawer.h" />
+    <ClInclude Include="FW1FontWrapper\CFW1Object.h" />
+    <ClInclude Include="FW1FontWrapper\CFW1StateSaver.h" />
+    <ClInclude Include="FW1FontWrapper\CFW1TextGeometry.h" />
+    <ClInclude Include="FW1FontWrapper\CFW1TextRenderer.h" />
+    <ClInclude Include="FW1FontWrapper\FW1CompileSettings.h" />
+    <ClInclude Include="FW1FontWrapper\FW1FontWrapper.h" />
+    <ClInclude Include="FW1FontWrapper\FW1Precompiled.h" />
+    <ClInclude Include="main.h" />
+    <ClInclude Include="MinHook\src\buffer.h" />
+    <ClInclude Include="MinHook\src\hde\hde32.h" />
+    <ClInclude Include="MinHook\src\hde\hde64.h" />
+    <ClInclude Include="MinHook\src\hde\pstdint.h" />
+    <ClInclude Include="MinHook\src\hde\table32.h" />
+    <ClInclude Include="MinHook\src\hde\table64.h" />
+    <ClInclude Include="MinHook\src\trampoline.h" />
+  </ItemGroup>
   <ItemGroup>
     <ClCompile Include="FW1FontWrapper\CFW1ColorRGBA.cpp" />
     <ClCompile Include="FW1FontWrapper\CFW1ColorRGBAInterface.cpp" />
@@ -172,29 +194,11 @@
     <ClCompile Include="FW1FontWrapper\FW1FontWrapper.cpp" />
     <ClCompile Include="FW1FontWrapper\FW1Precompiled.cpp" />
     <ClCompile Include="MinHook\src\buffer.c" />
-    <ClCompile Include="MinHook\src\HDE\hde32.c" />
-    <ClCompile Include="MinHook\src\HDE\hde64.c" />
+    <ClCompile Include="MinHook\src\hde\hde32.c" />
+    <ClCompile Include="MinHook\src\hde\hde64.c" />
     <ClCompile Include="MinHook\src\hook.c" />
     <ClCompile Include="MinHook\src\trampoline.c" />
     <ClCompile Include="universal.cpp" />
-  </ItemGroup>
-  <ItemGroup>
-    <ClInclude Include="FW1FontWrapper\CFW1ColorRGBA.h" />
-    <ClInclude Include="FW1FontWrapper\CFW1DWriteRenderTarget.h" />
-    <ClInclude Include="FW1FontWrapper\CFW1Factory.h" />
-    <ClInclude Include="FW1FontWrapper\CFW1FontWrapper.h" />
-    <ClInclude Include="FW1FontWrapper\CFW1GlyphAtlas.h" />
-    <ClInclude Include="FW1FontWrapper\CFW1GlyphProvider.h" />
-    <ClInclude Include="FW1FontWrapper\CFW1GlyphRenderStates.h" />
-    <ClInclude Include="FW1FontWrapper\CFW1GlyphSheet.h" />
-    <ClInclude Include="FW1FontWrapper\CFW1GlyphVertexDrawer.h" />
-    <ClInclude Include="FW1FontWrapper\CFW1Object.h" />
-    <ClInclude Include="FW1FontWrapper\CFW1StateSaver.h" />
-    <ClInclude Include="FW1FontWrapper\CFW1TextGeometry.h" />
-    <ClInclude Include="FW1FontWrapper\CFW1TextRenderer.h" />
-    <ClInclude Include="FW1FontWrapper\FW1CompileSettings.h" />
-    <ClInclude Include="FW1FontWrapper\FW1FontWrapper.h" />
-    <ClInclude Include="FW1FontWrapper\FW1Precompiled.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
