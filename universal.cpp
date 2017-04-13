@@ -530,12 +530,6 @@ BOOL __stdcall DllMain(HINSTANCE hModule, DWORD dwReason, LPVOID lpReserved)
 		if (MH_DisableHook((DWORD_PTR*)pContextVTable[21]) != MH_OK) { return 1; }
 		if (MH_DisableHook((DWORD_PTR*)pContextVTable[40]) != MH_OK) { return 1; }
 		if (MH_DisableHook((DWORD_PTR*)pContextVTable[13]) != MH_OK) { return 1; }
-		if (MH_DisableHook((DWORD_PTR*)pContextVTable[9]) != MH_OK) { return 1; }
-		if (MH_DisableHook((DWORD_PTR*)pContextVTable[29]) != MH_OK) { return 1; }
-		if (MH_DisableHook((DWORD_PTR*)pContextVTable[14]) != MH_OK) { return 1; }
-		if (MH_DisableHook((DWORD_PTR*)pDeviceVTable[12]) != MH_OK) { return 1; }
-		if (MH_DisableHook((DWORD_PTR*)pDeviceVTable[5]) != MH_OK) { return 1; }
-		if (MH_DisableHook((DWORD_PTR*)pDeviceVTable[7]) != MH_OK) { return 1; }
 		if (MH_DisableHook((DWORD_PTR*)pContextVTable[8]) != MH_OK) { return 1; }
 		break;
 	}
