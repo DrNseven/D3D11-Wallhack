@@ -1,35 +1,51 @@
-﻿#include <Windows.h>
+﻿//D3D11 wallhack
+//compile in release mode, not debug
+
+#include <Windows.h>
 #include <vector>
 #include <d3d11.h>
-#include <D3D11Shader.h>
-#include <D3Dcompiler.h>//generateshader
+#include <D3Dcompiler.h> //generateshader
 #pragma comment(lib, "D3dcompiler.lib")
 #pragma comment(lib, "d3d11.lib")
-
+#pragma comment(lib, "winmm.lib") //timeGetTime
 #include "MinHook/include/MinHook.h" //detour x86&x64
 #include "FW1FontWrapper/FW1FontWrapper.h" //font
+#pragma warning( disable : 4244 )
 
 
 typedef HRESULT(__stdcall *D3D11PresentHook) (IDXGISwapChain* pSwapChain, UINT SyncInterval, UINT Flags);
-typedef void(__stdcall *D3D11DrawHook) (ID3D11DeviceContext* pContext, UINT VertexCount, UINT StartVertexLocation);
+typedef HRESULT(__stdcall *D3D11ResizeBuffersHook) (IDXGISwapChain *pSwapChain, UINT BufferCount, UINT Width, UINT Height, DXGI_FORMAT NewFormat, UINT SwapChainFlags);
+typedef void(__stdcall *D3D11IASetVertexBuffersHook) (ID3D11DeviceContext* pContext, UINT StartSlot, UINT NumBuffers, ID3D11Buffer *const *ppVertexBuffers, const UINT *pStrides, const UINT *pOffsets);
+typedef void(__stdcall *D3D11PSSetShaderResourcesHook) (ID3D11DeviceContext* pContext, UINT StartSlot, UINT NumViews, ID3D11ShaderResourceView *const *ppShaderResourceViews);
+
 typedef void(__stdcall *D3D11DrawIndexedHook) (ID3D11DeviceContext* pContext, UINT IndexCount, UINT StartIndexLocation, INT BaseVertexLocation);
-typedef void(__stdcall *D3D11DrawInstancedHook) (ID3D11DeviceContext* pContext, UINT VertexCountPerInstance, UINT InstanceCount, UINT StartVertexLocation, UINT StartInstanceLocation);
 typedef void(__stdcall *D3D11DrawIndexedInstancedHook) (ID3D11DeviceContext* pContext, UINT IndexCountPerInstance, UINT InstanceCount, UINT StartIndexLocation, INT BaseVertexLocation, UINT StartInstanceLocation);
+typedef void(__stdcall *D3D11DrawHook) (ID3D11DeviceContext* pContext, UINT VertexCount, UINT StartVertexLocation);
+typedef void(__stdcall *D3D11DrawInstancedHook) (ID3D11DeviceContext* pContext, UINT VertexCountPerInstance, UINT InstanceCount, UINT StartVertexLocation, UINT StartInstanceLocation);
 typedef void(__stdcall *D3D11DrawInstancedIndirectHook) (ID3D11DeviceContext* pContext, ID3D11Buffer *pBufferForArgs, UINT AlignedByteOffsetForArgs);
 typedef void(__stdcall *D3D11DrawIndexedInstancedIndirectHook) (ID3D11DeviceContext* pContext, ID3D11Buffer *pBufferForArgs, UINT AlignedByteOffsetForArgs);
-typedef void(__stdcall *D3D11PSSetShaderResourcesHook) (ID3D11DeviceContext* pContext, UINT StartSlot, UINT NumViews, ID3D11ShaderResourceView *const *ppShaderResourceViews);
+
+typedef void(__stdcall *D3D11VSSetConstantBuffersHook) (ID3D11DeviceContext* pContext, UINT StartSlot, UINT NumBuffers, ID3D11Buffer *const *ppConstantBuffers);
+typedef void(__stdcall *D3D11PSSetSamplersHook) (ID3D11DeviceContext* pContext, UINT StartSlot, UINT NumSamplers, ID3D11SamplerState *const *ppSamplers);
 typedef void(__stdcall *D3D11CreateQueryHook) (ID3D11Device* pDevice, const D3D11_QUERY_DESC *pQueryDesc, ID3D11Query **ppQuery);
 
 
 D3D11PresentHook phookD3D11Present = NULL;
-D3D11DrawHook phookD3D11Draw = NULL;
+D3D11ResizeBuffersHook phookD3D11ResizeBuffers = NULL;
+D3D11IASetVertexBuffersHook phookD3D11IASetVertexBuffers = NULL;
+D3D11PSSetShaderResourcesHook phookD3D11PSSetShaderResources = NULL;
+
 D3D11DrawIndexedHook phookD3D11DrawIndexed = NULL;
-D3D11DrawInstancedHook phookD3D11DrawInstanced = NULL;
 D3D11DrawIndexedInstancedHook phookD3D11DrawIndexedInstanced = NULL;
+D3D11DrawHook phookD3D11Draw = NULL;
+D3D11DrawInstancedHook phookD3D11DrawInstanced = NULL;
 D3D11DrawInstancedIndirectHook phookD3D11DrawInstancedIndirect = NULL;
 D3D11DrawIndexedInstancedIndirectHook phookD3D11DrawIndexedInstancedIndirect = NULL;
-D3D11PSSetShaderResourcesHook phookD3D11PSSetShaderResources = NULL;
+
+D3D11VSSetConstantBuffersHook phookD3D11VSSetConstantBuffers = NULL;
+D3D11PSSetSamplersHook phookD3D11PSSetSamplers = NULL;
 D3D11CreateQueryHook phookD3D11CreateQuery = NULL;
+
 
 ID3D11Device *pDevice = NULL;
 ID3D11DeviceContext *pContext = NULL;
@@ -41,42 +57,17 @@ DWORD_PTR* pDeviceVTable = NULL;
 IFW1Factory *pFW1Factory = NULL;
 IFW1FontWrapper *pFontWrapper = NULL;
 
-#include "main.h"
+#include "main.h" //helper funcs
+
 
 //==========================================================================================================================
 
-//init only once
-bool firstTime = true;
+HRESULT __stdcall hookD3D11ResizeBuffers(IDXGISwapChain *pSwapChain, UINT BufferCount, UINT Width, UINT Height, DXGI_FORMAT NewFormat, UINT SwapChainFlags)
+{
+	if (RenderTargetView != NULL) { RenderTargetView->Release(); RenderTargetView = NULL; }
 
-//vertex
-ID3D11Buffer *veBuffer;
-UINT Stride = 0;
-UINT veBufferOffset = 0;
-D3D11_BUFFER_DESC vedesc;
-
-//index
-ID3D11Buffer *inBuffer;
-DXGI_FORMAT inFormat;
-UINT        inOffset;
-D3D11_BUFFER_DESC indesc;
-
-//rendertarget
-ID3D11Texture2D* RenderTargetTexture;
-ID3D11RenderTargetView* RenderTargetView = NULL;
-
-//shader
-ID3D11PixelShader* psRed = NULL;
-ID3D11PixelShader* psGreen = NULL;
-
-//pssetshaderresources
-UINT pssrStartSlot;
-D3D11_SHADER_RESOURCE_VIEW_DESC  Descr;
-ID3D11ShaderResourceView* ShaderResourceView;
-
-//used for logging/cycling through values
-bool logger = false;
-int countnum = 0;
-char szString[64];
+	return phookD3D11ResizeBuffers(pSwapChain, BufferCount, Width, Height, NewFormat, SwapChainFlags);
+}
 
 //==========================================================================================================================
 
@@ -84,125 +75,221 @@ HRESULT __stdcall hookD3D11Present(IDXGISwapChain* pSwapChain, UINT SyncInterval
 {
 	if (firstTime)
 	{
-		//get device and context
+		firstTime = false;
+
+		//get device
 		if (SUCCEEDED(pSwapChain->GetDevice(__uuidof(ID3D11Device), (void **)&pDevice)))
 		{
 			pSwapChain->GetDevice(__uuidof(pDevice), (void**)&pDevice);
 			pDevice->GetImmediateContext(&pContext);
 		}
 
-		//create depthstencilstate
-		D3D11_DEPTH_STENCIL_DESC  stencilDesc;
-		stencilDesc.DepthFunc = D3D11_COMPARISON_LESS;
-		stencilDesc.StencilEnable = true;
-		stencilDesc.StencilReadMask = 0xFF;
-		stencilDesc.StencilWriteMask = 0xFF;
-		stencilDesc.FrontFace.StencilFailOp = D3D11_STENCIL_OP_KEEP;
-		stencilDesc.FrontFace.StencilDepthFailOp = D3D11_STENCIL_OP_INCR;
-		stencilDesc.FrontFace.StencilPassOp = D3D11_STENCIL_OP_KEEP;
-		stencilDesc.FrontFace.StencilFunc = D3D11_COMPARISON_ALWAYS;
-		stencilDesc.BackFace.StencilFailOp = D3D11_STENCIL_OP_KEEP;
-		stencilDesc.BackFace.StencilDepthFailOp = D3D11_STENCIL_OP_DECR;
-		stencilDesc.BackFace.StencilPassOp = D3D11_STENCIL_OP_KEEP;
-		stencilDesc.BackFace.StencilFunc = D3D11_COMPARISON_ALWAYS;
+		//create depthstencilstate depth false
+		D3D11_DEPTH_STENCIL_DESC depthStencilDescfalse = {};
+		// Depth state:
+		depthStencilDescfalse.DepthEnable = false;
+		depthStencilDescfalse.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ALL;
+		//for UT4 engine etc.
+		depthStencilDescfalse.DepthFunc = D3D11_COMPARISON_GREATER; //<- can be different in other games
+		// Stencil state:
+		depthStencilDescfalse.StencilEnable = true;
+		depthStencilDescfalse.StencilReadMask = 0xFF;
+		depthStencilDescfalse.StencilWriteMask = 0xFF;
+		// Stencil operations if pixel is front-facing:												
+		depthStencilDescfalse.FrontFace.StencilFailOp = D3D11_STENCIL_OP_KEEP;
+		depthStencilDescfalse.FrontFace.StencilDepthFailOp = D3D11_STENCIL_OP_INCR;
+		depthStencilDescfalse.FrontFace.StencilPassOp = D3D11_STENCIL_OP_KEEP;
+		depthStencilDescfalse.FrontFace.StencilFunc = D3D11_COMPARISON_ALWAYS;
+		// Stencil operations if pixel is back-facing:
+		depthStencilDescfalse.BackFace.StencilFailOp = D3D11_STENCIL_OP_KEEP;
+		depthStencilDescfalse.BackFace.StencilDepthFailOp = D3D11_STENCIL_OP_DECR;
+		depthStencilDescfalse.BackFace.StencilPassOp = D3D11_STENCIL_OP_KEEP;
+		depthStencilDescfalse.BackFace.StencilFunc = D3D11_COMPARISON_ALWAYS;
+		hr = pDevice->CreateDepthStencilState(&depthStencilDescfalse, &depthStencilStatefalse);
+		if (FAILED(hr)) { Log("Failed to CreateDepthStencilState"); }
 
-		stencilDesc.DepthEnable = true;
-		stencilDesc.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ALL;
-		pDevice->CreateDepthStencilState(&stencilDesc, &myDepthStencilStates[static_cast<int>(eDepthState::ENABLED)]);
+		//create depthstencilstate depth true
+		D3D11_DEPTH_STENCIL_DESC depthStencilDesc = {};
+		// Depth state:
+		depthStencilDesc.DepthEnable = true;
+		depthStencilDesc.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ALL;
+		//for UT4 engine etc.
+		depthStencilDesc.DepthFunc = D3D11_COMPARISON_GREATER_EQUAL;
+		// Stencil state:
+		depthStencilDesc.StencilEnable = true;
+		depthStencilDesc.StencilReadMask = 0xFF;
+		depthStencilDesc.StencilWriteMask = 0xFF;
+		// Stencil operations if pixel is front-facing:
+		depthStencilDesc.FrontFace.StencilFailOp = D3D11_STENCIL_OP_KEEP;
+		depthStencilDesc.FrontFace.StencilDepthFailOp = D3D11_STENCIL_OP_INCR;
+		depthStencilDesc.FrontFace.StencilPassOp = D3D11_STENCIL_OP_KEEP;
+		depthStencilDesc.FrontFace.StencilFunc = D3D11_COMPARISON_GREATER_EQUAL; //if models disappear or chams in one color change this
+		// Stencil operations if pixel is back-facing:
+		depthStencilDesc.BackFace.StencilFailOp = D3D11_STENCIL_OP_KEEP;
+		depthStencilDesc.BackFace.StencilDepthFailOp = D3D11_STENCIL_OP_DECR;
+		depthStencilDesc.BackFace.StencilPassOp = D3D11_STENCIL_OP_KEEP;
+		depthStencilDesc.BackFace.StencilFunc = D3D11_COMPARISON_GREATER_EQUAL; //if models disappear or chams in one color change this
+		hr = pDevice->CreateDepthStencilState(&depthStencilDesc, &depthStencilState);
+		if (FAILED(hr)) { Log("Failed to CreateDepthStencilState"); }
 
-		stencilDesc.DepthEnable = false;
-		stencilDesc.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ALL;
-		pDevice->CreateDepthStencilState(&stencilDesc, &myDepthStencilStates[static_cast<int>(eDepthState::DISABLED)]);
-
-		stencilDesc.DepthEnable = false;
-		stencilDesc.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ZERO;
-		stencilDesc.StencilEnable = false;
-		stencilDesc.StencilReadMask = UINT8(0xFF);
-		stencilDesc.StencilWriteMask = 0x0;
-		pDevice->CreateDepthStencilState(&stencilDesc, &myDepthStencilStates[static_cast<int>(eDepthState::NO_READ_NO_WRITE)]);
-
-		stencilDesc.DepthEnable = true;
-		stencilDesc.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ALL; //
-		stencilDesc.DepthFunc = D3D11_COMPARISON_GREATER_EQUAL;
-		stencilDesc.StencilEnable = false;
-		stencilDesc.StencilReadMask = UINT8(0xFF);
-		stencilDesc.StencilWriteMask = 0x0;
-
-		stencilDesc.FrontFace.StencilFailOp = D3D11_STENCIL_OP_ZERO;
-		stencilDesc.FrontFace.StencilDepthFailOp = D3D11_STENCIL_OP_ZERO;
-		stencilDesc.FrontFace.StencilPassOp = D3D11_STENCIL_OP_KEEP;
-		stencilDesc.FrontFace.StencilFunc = D3D11_COMPARISON_EQUAL;
-
-		stencilDesc.BackFace.StencilFailOp = D3D11_STENCIL_OP_ZERO;
-		stencilDesc.BackFace.StencilDepthFailOp = D3D11_STENCIL_OP_ZERO;
-		stencilDesc.BackFace.StencilPassOp = D3D11_STENCIL_OP_ZERO;
-		stencilDesc.BackFace.StencilFunc = D3D11_COMPARISON_NEVER;
-		pDevice->CreateDepthStencilState(&stencilDesc, &myDepthStencilStates[static_cast<int>(eDepthState::READ_NO_WRITE)]);
-
-		//wireframe
+		//create wireframe
 		D3D11_RASTERIZER_DESC rwDesc;
-		pContext->RSGetState(&rwState); // retrieve the current state
-		rwState->GetDesc(&rwDesc);    // get the desc of the state
-		rwDesc.FillMode = D3D11_FILL_WIREFRAME;
-		rwDesc.CullMode = D3D11_CULL_NONE;
-		// create a whole new rasterizer state
-		pDevice->CreateRasterizerState(&rwDesc, &rwState);
+		pContext->RSGetState(&rwState);
+		if (rwState != NULL) {
+			rwState->GetDesc(&rwDesc);
+			rwDesc.FillMode = D3D11_FILL_WIREFRAME;
+			rwDesc.CullMode = D3D11_CULL_NONE;
+		}
+		else { Log("No RS state set, defaults are in use"); }
+		hr = pDevice->CreateRasterizerState(&rwDesc, &rwState);
+		if (FAILED(hr)) { Log("Failed to CreateRasterizerState rwDesc"); }
 
 		//solid
 		D3D11_RASTERIZER_DESC rsDesc;
-		pContext->RSGetState(&rsState); // retrieve the current state
-		rsState->GetDesc(&rsDesc);    // get the desc of the state
-		rsDesc.FillMode = D3D11_FILL_SOLID;
-		rsDesc.CullMode = D3D11_CULL_BACK;
-		// create a whole new rasterizer state
+		pContext->RSGetState(&rsState);
+		if (rsState != NULL) {
+			rsState->GetDesc(&rsDesc);
+			rsDesc.FillMode = D3D11_FILL_SOLID;
+			rsDesc.CullMode = D3D11_CULL_BACK;
+		}
+		else { Log("No RS state set, defaults are in use"); }
 		pDevice->CreateRasterizerState(&rsDesc, &rsState);
+		if (FAILED(hr)) { Log("Failed to CreateRasterizerState rsDesc"); }
+
+		//create sample state
+		D3D11_SAMPLER_DESC sampDesc;
+		ZeroMemory(&sampDesc, sizeof(sampDesc));
+		sampDesc.Filter = D3D11_FILTER::D3D11_FILTER_MIN_MAG_MIP_LINEAR;
+		sampDesc.AddressU = D3D11_TEXTURE_ADDRESS_WRAP;
+		sampDesc.AddressV = D3D11_TEXTURE_ADDRESS_WRAP;
+		sampDesc.AddressW = D3D11_TEXTURE_ADDRESS_WRAP;
+		sampDesc.ComparisonFunc = D3D11_COMPARISON_FUNC::D3D11_COMPARISON_LESS_EQUAL;
+		sampDesc.MinLOD = 0;
+		sampDesc.MaxLOD = D3D11_FLOAT32_MAX;
+		hr = pDevice->CreateSamplerState(&sampDesc, &pSamplerState);
+		if (FAILED(hr)) { Log("Failed to CreateSamplerState"); }
+
+		//create green texture
+		DXGI_FORMAT format = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB; //format
+		static const uint32_t s_pixel = 0xff00ff00; //0xffffffff white, 0xff00ff00 green, 0xffff0000 blue, 0xff0000ff red
+		D3D11_SUBRESOURCE_DATA initData = { &s_pixel, sizeof(uint32_t), 0 };
+		D3D11_TEXTURE2D_DESC desc;
+		memset(&desc, 0, sizeof(desc));
+		desc.Width = desc.Height = desc.MipLevels = desc.ArraySize = 1;
+		desc.Format = format;
+		desc.SampleDesc.Count = 1;
+		desc.Usage = D3D11_USAGE_DEFAULT;// D3D11_USAGE_IMMUTABLE;
+		desc.BindFlags = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;// D3D11_BIND_SHADER_RESOURCE;
+		hr = pDevice->CreateTexture2D(&desc, &initData, &texGreen);
+		if (FAILED(hr)) { Log("Failed to CreateTexture2D"); }
+
+		//create red texture
+		static const uint32_t s_pixelr = 0xff0000ff; //0xffffffff white, 0xff00ff00 green, 0xffff0000 blue, 0xff0000ff red
+		D3D11_SUBRESOURCE_DATA initDatar = { &s_pixelr, sizeof(uint32_t), 0 };
+		D3D11_TEXTURE2D_DESC descr;
+		memset(&descr, 0, sizeof(descr));
+		descr.Width = descr.Height = descr.MipLevels = descr.ArraySize = 1;
+		descr.Format = format;
+		descr.SampleDesc.Count = 1;
+		descr.Usage = D3D11_USAGE_DEFAULT;// D3D11_USAGE_IMMUTABLE;
+		descr.BindFlags = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;// D3D11_BIND_SHADER_RESOURCE;
+		hr = pDevice->CreateTexture2D(&descr, &initDatar, &texRed);
+		if (FAILED(hr)) { Log("Failed to CreateTexture2D"); }
+
+		//create green shaderresourceview
+		D3D11_SHADER_RESOURCE_VIEW_DESC SRVDesc;
+		memset(&SRVDesc, 0, sizeof(SRVDesc));
+		SRVDesc.Format = format;
+		SRVDesc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
+		SRVDesc.Texture2D.MipLevels = 1;
+		hr = pDevice->CreateShaderResourceView(texGreen, &SRVDesc, &texSRVg);
+		if (FAILED(hr)) { Log("Failed to CreateShaderResourceView"); }
+		texGreen->Release();
+
+		//create red shaderresourceview
+		D3D11_SHADER_RESOURCE_VIEW_DESC SRVDescr;
+		memset(&SRVDescr, 0, sizeof(SRVDescr));
+		SRVDescr.Format = format;
+		SRVDescr.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
+		SRVDescr.Texture2D.MipLevels = 1;
+		hr = pDevice->CreateShaderResourceView(texRed, &SRVDescr, &texSRVr);
+		if (FAILED(hr)) { Log("Failed to CreateShaderResourceView"); }
+		texRed->Release();
 
 		//create font
-		HRESULT hResult = FW1CreateFactory(FW1_VERSION, &pFW1Factory);
-		hResult = pFW1Factory->CreateFontWrapper(pDevice, L"Tahoma", &pFontWrapper);
+		hr = FW1CreateFactory(FW1_VERSION, &pFW1Factory);
+		if (FAILED(hr)) { Log("Failed to FW1CreateFactory"); return hr; }
+		hr = pFW1Factory->CreateFontWrapper(pDevice, L"Tahoma", &pFontWrapper);
+		if (FAILED(hr)) { Log("Failed to CreateFontWrapper"); return hr; }
 		pFW1Factory->Release();
 
-		// use the back buffer address to create the render target
-		//if (SUCCEEDED(pSwapChain->GetBuffer(0, __uuidof(ID3D11Texture2D), reinterpret_cast<LPVOID*>(&RenderTargetTexture))))
-		if (SUCCEEDED(pSwapChain->GetBuffer(0, __uuidof(ID3D11Texture2D), (LPVOID*)&RenderTargetTexture)))
-		{
-			pDevice->CreateRenderTargetView(RenderTargetTexture, NULL, &RenderTargetView);
-			RenderTargetTexture->Release();
-		}
-
-		firstTime = false;
+		//load cfg settings
+		LoadCfg();
 	}
 
-	//shaders
-	if (!psRed)
-	GenerateShader(pDevice, &psRed, 1.0f, 0.0f, 0.0f);
-
-	if (!psGreen)
-	GenerateShader(pDevice, &psGreen, 0.0f, 1.0f, 0.0f);
-
-
-	//call before you draw
-	pContext->OMSetRenderTargets(1, &RenderTargetView, NULL);
-	//draw
-	if (pFontWrapper)
-	pFontWrapper->DrawString(pContext, L"D3D11 Hook", 14, 16.0f, 16.0f, 0xffff1612, FW1_RESTORESTATE);
-
-
-	//logger
-	if ((GetAsyncKeyState(VK_MENU)) && (GetAsyncKeyState(VK_CONTROL)) && (GetAsyncKeyState(0x4C) & 1)) //ALT + CTRL + L toggles logger
-		logger = !logger;
-	if (logger && pFontWrapper) //&& countnum >= 0)
+	//create rendertarget
+	if (RenderTargetView == NULL)
 	{
-		//call before you draw
+		//viewport
+		pContext->RSGetViewports(&vps, &viewport);
+		ScreenCenterX = viewport.Width / 2.0f;
+		ScreenCenterY = viewport.Height / 2.0f;
+
+		//get backbuffer
+		ID3D11Texture2D* backbuffer = NULL;
+		hr = pSwapChain->GetBuffer(0, __uuidof(ID3D11Texture2D), (LPVOID*)&backbuffer);
+		if (FAILED(hr)) {
+			Log("Failed to get BackBuffer");
+			pContext->OMGetRenderTargets(1, &RenderTargetView, NULL);
+			pContext->OMSetRenderTargets(1, &RenderTargetView, NULL);
+			return hr;
+		}
+
+		//create rendertarget
+		hr = pDevice->CreateRenderTargetView(backbuffer, NULL, &RenderTargetView);
+		backbuffer->Release();
+		if (FAILED(hr)) {
+			Log("Failed to get RenderTarget");
+			return hr;
+		}
+	}
+	else //call before you draw
 		pContext->OMSetRenderTargets(1, &RenderTargetView, NULL);
 
-		wchar_t reportValue[256];
-		swprintf_s(reportValue, L"countnum = %d", countnum);
-		pFontWrapper->DrawString(pContext, reportValue, 20.0f, 220.0f, 100.0f, 0xffffffff, FW1_RESTORESTATE);
-		pFontWrapper->DrawString(pContext, L"hold P to +", 20.0f, 220.0f, 120.0f, 0xfff11111, FW1_RESTORESTATE);
-		pFontWrapper->DrawString(pContext, L"hold O to -", 20.0f, 220.0f, 140.0f, 0xfaf22222, FW1_RESTORESTATE);
-		pFontWrapper->DrawString(pContext, L"press I to log", 20.0f, 220.0f, 160.0f, 0xfff99999, FW1_RESTORESTATE);
-		pFontWrapper->DrawString(pContext, L"F9 to log drawfunc", 20.0f, 220.0f, 180.0f, 0xff00ff00, FW1_RESTORESTATE);
+
+	//draw text example
+	//if (pFontWrapper)
+	//pFontWrapper->DrawString(pContext, L"D3D11 Hook", 14, 16.0f, 16.0f, 0xffff1612, FW1_RESTORESTATE | FW1_ALIASED);
+
+	//create shaders
+	if (!psRed)
+		GenerateShader(pDevice, &psRed, 1.0f, 0.0f, 0.0f);
+
+	if (!psGreen)
+		GenerateShader(pDevice, &psGreen, 0.0f, 1.0f, 0.0f);
+
+	//menu
+	if (IsReady() == false)
+	{
+		Init_Menu(pContext, L"D3D11 Menu", 100, 100);
+		Do_Menu();
+		Color_Font = 0xFFFFFFFF;//white
+		Color_Off = 0xFFFF0000;//red
+		Color_On = 0xFF00FF00;//green
+		Color_Folder = 0xFF2F4F4F;//grey
+		Color_Current = 0xFF00BFFF;//orange
+	}
+	Draw_Menu();
+	Navigation();
+
+	
+	//logger
+	if (logger && pFontWrapper) //&& countnum >= 0)
+	{
+		swprintf_s(reportValue, L"(Keys:-O P+ I=Log) countnum = %d", countnum);
+		pFontWrapper->DrawString(pContext, reportValue, 16.0f, 320.0f, 100.0f, 0xff00ff00, FW1_RESTORESTATE);
+
+		pFontWrapper->DrawString(pContext, L"F9 = log drawfunc", 16.0f, 320.0f, 120.0f, 0xffffffff, FW1_RESTORESTATE);
 	}
 
 	return phookD3D11Present(pSwapChain, SyncInterval, Flags);
@@ -210,65 +297,152 @@ HRESULT __stdcall hookD3D11Present(IDXGISwapChain* pSwapChain, UINT SyncInterval
 
 //==========================================================================================================================
 
+void __stdcall hookD3D11IASetVertexBuffers(ID3D11DeviceContext* pContext, UINT StartSlot, UINT NumBuffers, ID3D11Buffer *const *ppVertexBuffers, const UINT *pStrides, const UINT *pOffsets)
+{
+	//Stride = *pStrides;
+
+	return phookD3D11IASetVertexBuffers(pContext, StartSlot, NumBuffers, ppVertexBuffers, pStrides, pOffsets);
+}
+
+//==========================================================================================================================
+
 void __stdcall hookD3D11DrawIndexed(ID3D11DeviceContext* pContext, UINT IndexCount, UINT StartIndexLocation, INT BaseVertexLocation)
 {
-	//if (GetAsyncKeyState(VK_F9) & 1)
-		//Log("DrawIndexed called");
-	
-	//get stride & vdesc.ByteWidth
-	pContext->IAGetVertexBuffers(0, 1, &veBuffer, &Stride, &veBufferOffset);
-	if (veBuffer)
-		veBuffer->GetDesc(&vedesc);
-	if (veBuffer != NULL){ veBuffer->Release(); veBuffer = NULL; }
+	if (GetAsyncKeyState(VK_F9) & 1)
+		Log("DrawIndexed called");
 
-	//get indesc.ByteWidth
+	//get stride & vedesc.ByteWidth
+	pContext->IAGetVertexBuffers(0, 1, &veBuffer, &Stride, &veBufferOffset);
+	if (veBuffer != NULL)
+		veBuffer->GetDesc(&vedesc);
+	if (veBuffer != NULL) { veBuffer->Release(); veBuffer = NULL; }
+
+	//get indesc.ByteWidth (comment out if not used)
 	pContext->IAGetIndexBuffer(&inBuffer, &inFormat, &inOffset);
-	if (inBuffer)
+	if (inBuffer != NULL)
 		inBuffer->GetDesc(&indesc);
 	if (inBuffer != NULL) { inBuffer->Release(); inBuffer = NULL; }
-	
-	//wallhack example
-	if (Stride == 32 && indesc.ByteWidth == 123456)
-	{
-		SetDepthStencilState(DISABLED);
-		pContext->PSSetShader(psRed, NULL, NULL);
-		phookD3D11DrawIndexed(pContext, IndexCount, StartIndexLocation, BaseVertexLocation);
-		pContext->PSSetShader(psGreen, NULL, NULL);
-		//if (pssrStartSlot == 1) //if black screen, find correct pssrStartSlot
-		SetDepthStencilState(READ_NO_WRITE);
-	}
-	
+
+	//get pscdesc.ByteWidth (comment out if not used)
+	pContext->PSGetConstantBuffers(pscStartSlot, 1, &pscBuffer);
+	if (pscBuffer != NULL)
+		pscBuffer->GetDesc(&pscdesc);
+	if (pscBuffer != NULL) { pscBuffer->Release(); pscBuffer = NULL; }
+
+	//get vscdesc.ByteWidth (comment out if not used)
+	pContext->VSGetConstantBuffers(vscStartSlot, 1, &vscBuffer);
+	if (vscBuffer != NULL)
+		vscBuffer->GetDesc(&vscdesc);
+	if (vscBuffer != NULL) { vscBuffer->Release(); vscBuffer = NULL; }
+
+
+	//wallhack/chams
+	if (sOptions[0].Function == 1 || sOptions[1].Function == 1 || sOptions[1].Function == 2) //if wallhack/chams option is enabled in menu
+	///////////////////////////////////////////////
+	//MODEL RECOGNTION values and what you use depends on the game, log some models and use what works best. Stride && pscdesc.ByteWidth etc. Use IndexCount if models don't change with distance
+		if (countnum == Stride) //Stride alone is usually not enough
+		//////////////////////////////////////////////
+		/*
+		//unreal4 models
+			if ((Stride == 32 && IndexCount == 10155) ||
+				(Stride == 44 && IndexCount == 11097) ||
+				(Stride == 40 && IndexCount == 11412) ||
+				(Stride == 40 && IndexCount == 11487) ||
+				(Stride == 44 && IndexCount == 83262) ||
+				(Stride == 40 && IndexCount == 23283))
+
+				//qc models
+				//if (Stride >= 16 && vedesc.ByteWidth >= 14000000 && vedesc.ByteWidth <= 45354840)
+		*/
+		{
+			// behind walls
+			// in some games depthStencilStatefalse parameters need tweaking, depthStencilDescfalse.DepthFunc etc.
+
+			pContext->OMGetDepthStencilState(&origDepthStencilState, &stencilRef); //get original
+
+			//depth off for wallhack and chams
+			if (sOptions[0].Function == 1 || sOptions[1].Function == 1 || sOptions[1].Function == 2)
+				pContext->OMSetDepthStencilState(depthStencilStatefalse, stencilRef); //depth off <-------
+
+			//release
+			if (sOptions[0].Function == 1)
+				SAFE_RELEASE(depthStencilStatefalse);
+
+
+			//shader chams
+			if (sOptions[1].Function == 1)
+				pContext->PSSetShader(psRed, NULL, NULL);
+
+			//texture chams (use in games where shader turns transparent)
+			if (sOptions[1].Function == 2)
+			{
+				for (int x1 = 0; x1 <= 3; x1++) //3-10, high value may decrease fps
+				{
+					pContext->PSSetShaderResources(x1, 1, &texSRVr);
+				}
+				pContext->PSSetSamplers(0, 1, &pSamplerState);
+			}
+
+			phookD3D11DrawIndexed(pContext, IndexCount, StartIndexLocation, BaseVertexLocation);
+
+			// in front of walls
+			// in some games we need to restore origDepthStencilState and in others use depthStencilState
+
+			//orig depth on for wallhack 
+			if (sOptions[0].Function == 1)
+				pContext->OMSetDepthStencilState(origDepthStencilState, stencilRef); //depth on <-------
+
+			//custom depth on for chams
+			if (sOptions[1].Function == 1 || sOptions[1].Function == 2)
+				pContext->OMSetDepthStencilState(depthStencilState, stencilRef);
+
+			//release
+			if (sOptions[1].Function == 1 || sOptions[1].Function == 2)
+				SAFE_RELEASE(depthStencilStatefalse);
+
+			//release
+			if (sOptions[0].Function == 1)
+				SAFE_RELEASE(origDepthStencilState);
+
+
+			//shader chams
+			if (sOptions[1].Function == 1)
+				pContext->PSSetShader(psGreen, NULL, NULL);
+
+			//texture chams (use in games where shader turns transparent)
+			if (sOptions[1].Function == 2)
+			{
+				for (int y1 = 0; y1 <= 3; y1++) //3-10, high value may decrease fps
+				{
+					pContext->PSSetShaderResources(y1, 1, &texSRVg);
+				}
+				pContext->PSSetSamplers(0, 1, &pSamplerState);
+			}
+		}
+
+
 	//small bruteforce logger
-	//ALT + CTRL + L toggles logger
+	//press ALT + CTRL + L in game to enable logger
+	//hold P till models turn invisible, press I to log values of those models to log.txt
 	if (logger)
 	{
-		if ((Stride == 32 || Stride == 36) && (GetAsyncKeyState(VK_F10) & 1))
-			Log("Stride == %d && IndexCount == %d && indesc.ByteWidth == %d && vedesc.ByteWidth == %d && Descr.Format == %d", Stride, IndexCount, indesc.ByteWidth, vedesc.ByteWidth, Descr.Format);
-
-		//hold down P key until a texture is wallhacked, press I to log values of those textures
-		if (GetAsyncKeyState('O') & 1) //-
-			countnum--;
-		if (GetAsyncKeyState('P') & 1) //+
-			countnum++;
-		if ((GetAsyncKeyState(VK_MENU)) && (GetAsyncKeyState('9') & 1)) //reset, set to -1
-			countnum = -1;
-		if (countnum == indesc.ByteWidth / 1000)
+		if (countnum == Stride) //try using stride first to find models
+		//if (countnum == IndexCount / 100)
 			if (GetAsyncKeyState('I') & 1)
-				Log("Stride == %d && IndexCount == %d && indesc.ByteWidth == %d && vedesc.ByteWidth == %d && Descr.Format == %d", Stride, IndexCount, indesc.ByteWidth, vedesc.ByteWidth, Descr.Format);
-			
-		if (countnum == indesc.ByteWidth / 1000)
+				Log("Stride == %d && IndexCount == %d && indesc.ByteWidth == %d && vedesc.ByteWidth == %d && pscdesc.ByteWidth == %d && vscdesc.ByteWidth == %d && pssrStartSlot == %d && vscStartSlot == %d && pssStartSlot == %d && vedesc.Usage == %d && veBufferOffset == %d",
+					Stride, IndexCount, indesc.ByteWidth, vedesc.ByteWidth, pscdesc.ByteWidth, vscdesc.ByteWidth, pssrStartSlot, vscStartSlot, pssStartSlot, vedesc.Usage, veBufferOffset); //Descr.Format, Descr.Buffer.NumElements, texdesc.Format, texdesc.Height, texdesc.Width 
+
+		if (countnum == Stride)
+			//if (countnum == IndexCount / 100)
 		{
-			SetDepthStencilState(DISABLED);
-			//pContext->RSSetState(rwState);    //wireframe
-			pContext->PSSetShader(psRed, NULL, NULL);
-			phookD3D11DrawIndexed(pContext, IndexCount, StartIndexLocation, BaseVertexLocation);
-			SetDepthStencilState(READ_NO_WRITE);
-			//pContext->RSSetState(rsState);    //solid
-			pContext->PSSetShader(psGreen, NULL, NULL);
+			return; //delete texture
+			//pContext->RSSetState(rwState); //wireframe
+			//phookD3D11DrawIndexed(pContext, IndexCount, StartIndexLocation, BaseVertexLocation);
+			//pContext->RSSetState(rsState); //solid
 		}
 	}
-	
-    return phookD3D11DrawIndexed(pContext, IndexCount, StartIndexLocation, BaseVertexLocation);
+
+	return phookD3D11DrawIndexed(pContext, IndexCount, StartIndexLocation, BaseVertexLocation);
 }
 
 //==========================================================================================================================
@@ -277,59 +451,65 @@ void __stdcall hookD3D11PSSetShaderResources(ID3D11DeviceContext* pContext, UINT
 {
 	pssrStartSlot = StartSlot;
 
+	//logger keys (here for compatibility reasons)
+	if (GetAsyncKeyState(VK_MENU) && GetAsyncKeyState(VK_CONTROL) && GetAsyncKeyState(0x4C) & 1) //ALT + CTRL + L toggles logger
+		logger = !logger;
+	if (logger && pFontWrapper)
+	{
+		//hold down P key until a texture is wallhacked, press I to log values of those textures
+		if (GetAsyncKeyState('O') & 1) //-
+			countnum--;
+		if (GetAsyncKeyState('P') & 1) //+
+			countnum++;
+		if (GetAsyncKeyState(VK_MENU) && GetAsyncKeyState('9') & 1) //reset, set to -1
+			countnum = -1;
+	}
+
+	/*
+	//texture stuff (usually not needed)
 	for (UINT j = 0; j < NumViews; j++)
 	{
-		//Resources loop
 		ID3D11ShaderResourceView* pShaderResView = ppShaderResourceViews[j];
 		if (pShaderResView)
 		{
 			pShaderResView->GetDesc(&Descr);
-			//Descr.Buffer.NumElements;
-			//Descr.Format;
 
-			if (
-				(Descr.ViewDimension == D3D11_SRV_DIMENSION_BUFFER)
-				||
-				(Descr.ViewDimension == D3D11_SRV_DIMENSION_BUFFEREX)
-				)
-			{
-				continue;//Skip buffer resources
-			}
+			ID3D11Resource *Resource;
+			pShaderResView->GetResource(&Resource);
+			ID3D11Texture2D *Texture = (ID3D11Texture2D *)Resource;
+			Texture->GetDesc(&texdesc);
 
-		}// if( pShaderResView )
-	}// for
+			SAFE_RELEASE(Resource);
+			SAFE_RELEASE(Texture);
+		}
+	}
+	*/
 
 	/*
-	//alternative wallhack example for f'up games
-	if (Descr.Format == 56)
+	//ALTERNATIVE wallhack example for f'up games, only use this if no draw function works for wallhack
+	if (pssrStartSlot == 1) //if black screen, find correct pssrStartSlot
+		pContext->OMSetDepthStencilState(depthStencilStatefalse, 1);
+	if (pscdesc.ByteWidth == 224 && Descr.Format == 71) //models in Tom Clancys Rainbow Six Siege old version
 	{
-		pContext->PSSetShader(psRed, NULL, NULL);
-		SetDepthStencilState(DISABLED);
+		pContext->OMSetDepthStencilState(depthStencilStatefalse, stencilRef);
+		//pContext->PSSetShader(psRed, NULL, NULL);
 	}
-	else
-		if(pssrStartSlot == 1) //if black screen, find correct pssrStartSlot
-		SetDepthStencilState(READ_NO_WRITE);
+	else if (pssrStartSlot == 1) //if black screen, find correct pssrStartSlot
+		pContext->OMSetDepthStencilState(depthStencilState, stencilRef); //depth on
 	*/
+
 	return phookD3D11PSSetShaderResources(pContext, StartSlot, NumViews, ppShaderResourceViews);
 }
 
 //==========================================================================================================================
 
-void __stdcall hookD3D11CreateQuery(ID3D11Device* pDevice, const D3D11_QUERY_DESC *pQueryDesc, ID3D11Query **ppQuery)
+void __stdcall hookD3D11DrawIndexedInstanced(ID3D11DeviceContext* pContext, UINT IndexCountPerInstance, UINT InstanceCount, UINT StartIndexLocation, INT BaseVertexLocation, UINT StartInstanceLocation)
 {
-	//Disable Occlusion which prevents rendering player models through certain objects (used by wallhack to see models through walls at all distances, REDUCES FPS)
-	if (pQueryDesc->Query == D3D11_QUERY_OCCLUSION)
-	{
-		D3D11_QUERY_DESC oqueryDesc = CD3D11_QUERY_DESC();
-		(&oqueryDesc)->MiscFlags = pQueryDesc->MiscFlags;
-		(&oqueryDesc)->Query = D3D11_QUERY_TIMESTAMP;
+	if (GetAsyncKeyState(VK_F9) & 1)
+		Log("DrawIndexedInstanced called");
 
-		return phookD3D11CreateQuery(pDevice, &oqueryDesc, ppQuery);
-	}
-
-	return phookD3D11CreateQuery(pDevice, pQueryDesc, ppQuery);
+	return phookD3D11DrawIndexedInstanced(pContext, IndexCountPerInstance, InstanceCount, StartIndexLocation, BaseVertexLocation, StartInstanceLocation);
 }
-
 
 //==========================================================================================================================
 
@@ -353,16 +533,6 @@ void __stdcall hookD3D11DrawInstanced(ID3D11DeviceContext* pContext, UINT Vertex
 
 //==========================================================================================================================
 
-void __stdcall hookD3D11DrawIndexedInstanced(ID3D11DeviceContext* pContext, UINT IndexCountPerInstance, UINT InstanceCount, UINT StartIndexLocation, INT BaseVertexLocation, UINT StartInstanceLocation)
-{
-	if (GetAsyncKeyState(VK_F9) & 1)
-		Log("DrawIndexedInstanced called");
-
-	return phookD3D11DrawIndexedInstanced(pContext, IndexCountPerInstance, InstanceCount, StartIndexLocation, BaseVertexLocation, StartInstanceLocation);
-}
-
-//==========================================================================================================================
-
 void __stdcall hookD3D11DrawInstancedIndirect(ID3D11DeviceContext* pContext, ID3D11Buffer *pBufferForArgs, UINT AlignedByteOffsetForArgs)
 {
 	if (GetAsyncKeyState(VK_F9) & 1)
@@ -377,35 +547,62 @@ void __stdcall hookD3D11DrawIndexedInstancedIndirect(ID3D11DeviceContext* pConte
 {
 	if (GetAsyncKeyState(VK_F9) & 1)
 		Log("DrawIndexedInstancedIndirect called");
-	
+
 	return phookD3D11DrawIndexedInstancedIndirect(pContext, pBufferForArgs, AlignedByteOffsetForArgs);
 }
 
 //==========================================================================================================================
 
+void __stdcall hookD3D11VSSetConstantBuffers(ID3D11DeviceContext* pContext, UINT StartSlot, UINT NumBuffers, ID3D11Buffer *const *ppConstantBuffers)
+{
+	vscStartSlot = StartSlot;
+
+	return phookD3D11VSSetConstantBuffers(pContext, StartSlot, NumBuffers, ppConstantBuffers);
+}
+
+//==========================================================================================================================
+
+void __stdcall hookD3D11PSSetSamplers(ID3D11DeviceContext* pContext, UINT StartSlot, UINT NumSamplers, ID3D11SamplerState *const *ppSamplers)
+{
+	pssStartSlot = StartSlot;
+
+	return phookD3D11PSSetSamplers(pContext, StartSlot, NumSamplers, ppSamplers);
+}
+
+//==========================================================================================================================
+
+void __stdcall hookD3D11CreateQuery(ID3D11Device* pDevice, const D3D11_QUERY_DESC *pQueryDesc, ID3D11Query **ppQuery)
+{
+	/*
+	//this is required in some games for better wallhack (REDUCES FPS, NOT recommended)
+	//disables Occlusion which prevents rendering player models through certain objects (used by wallhack to see models through walls at all distances)
+	if (pQueryDesc->Query == D3D11_QUERY_OCCLUSION)
+	{
+		D3D11_QUERY_DESC oqueryDesc = CD3D11_QUERY_DESC();
+		(&oqueryDesc)->MiscFlags = pQueryDesc->MiscFlags;
+		(&oqueryDesc)->Query = D3D11_QUERY_TIMESTAMP;
+
+		return phookD3D11CreateQuery(pDevice, &oqueryDesc, ppQuery);
+	}
+	*/
+	return phookD3D11CreateQuery(pDevice, pQueryDesc, ppQuery);
+}
+
+//==========================================================================================================================
+
 const int MultisampleCount = 1; // Set to 1 to disable multisampling
-LRESULT CALLBACK DXGIMsgProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam){ return DefWindowProc(hwnd, uMsg, wParam, lParam); }
+LRESULT CALLBACK DXGIMsgProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) { return DefWindowProc(hwnd, uMsg, wParam, lParam); }
 DWORD __stdcall InitializeHook(LPVOID)
 {
-	//Sleep(5000);
-
 	HMODULE hDXGIDLL = 0;
 	do
 	{
 		hDXGIDLL = GetModuleHandle("dxgi.dll");
-		Sleep(8000);
+		Sleep(4000);
 	} while (!hDXGIDLL);
 	Sleep(100);
 
-	//HMODULE hD3D11DLL = 0;
-	//do
-	//{
-		//hD3D11DLL = GetModuleHandle("d3d11.dll");
-		//Sleep(100);
-	//} while (!hD3D11DLL);
-	//Sleep(1000);
-
-    IDXGISwapChain* pSwapChain;
+	IDXGISwapChain* pSwapChain;
 
 	WNDCLASSEXA wc = { sizeof(WNDCLASSEX), CS_CLASSDC, DXGIMsgProc, 0L, 0L, GetModuleHandleA(NULL), NULL, NULL, NULL, NULL, "DX", NULL };
 	RegisterClassExA(&wc);
@@ -464,11 +661,11 @@ DWORD __stdcall InitializeHook(LPVOID)
 	}
 
 
-    pSwapChainVtable = (DWORD_PTR*)pSwapChain;
-    pSwapChainVtable = (DWORD_PTR*)pSwapChainVtable[0];
+	pSwapChainVtable = (DWORD_PTR*)pSwapChain;
+	pSwapChainVtable = (DWORD_PTR*)pSwapChainVtable[0];
 
-    pContextVTable = (DWORD_PTR*)pContext;
-    pContextVTable = (DWORD_PTR*)pContextVTable[0];
+	pContextVTable = (DWORD_PTR*)pContext;
+	pContextVTable = (DWORD_PTR*)pContextVTable[0];
 
 	pDeviceVTable = (DWORD_PTR*)pDevice;
 	pDeviceVTable = (DWORD_PTR*)pDeviceVTable[0];
@@ -476,25 +673,35 @@ DWORD __stdcall InitializeHook(LPVOID)
 	if (MH_Initialize() != MH_OK) { return 1; }
 	if (MH_CreateHook((DWORD_PTR*)pSwapChainVtable[8], hookD3D11Present, reinterpret_cast<void**>(&phookD3D11Present)) != MH_OK) { return 1; }
 	if (MH_EnableHook((DWORD_PTR*)pSwapChainVtable[8]) != MH_OK) { return 1; }
+	if (MH_CreateHook((DWORD_PTR*)pSwapChainVtable[13], hookD3D11ResizeBuffers, reinterpret_cast<void**>(&phookD3D11ResizeBuffers)) != MH_OK) { return 1; }
+	if (MH_EnableHook((DWORD_PTR*)pSwapChainVtable[13]) != MH_OK) { return 1; }
+	//if (MH_CreateHook((DWORD_PTR*)pContextVTable[18], hookD3D11IASetVertexBuffers, reinterpret_cast<void**>(&phookD3D11IASetVertexBuffers)) != MH_OK) { return 1; }
+	//if (MH_EnableHook((DWORD_PTR*)pContextVTable[18]) != MH_OK) { return 1; }
+	if (MH_CreateHook((DWORD_PTR*)pContextVTable[8], hookD3D11PSSetShaderResources, reinterpret_cast<void**>(&phookD3D11PSSetShaderResources)) != MH_OK) { return 1; }
+	if (MH_EnableHook((DWORD_PTR*)pContextVTable[8]) != MH_OK) { return 1; }
+
 	if (MH_CreateHook((DWORD_PTR*)pContextVTable[12], hookD3D11DrawIndexed, reinterpret_cast<void**>(&phookD3D11DrawIndexed)) != MH_OK) { return 1; }
 	if (MH_EnableHook((DWORD_PTR*)pContextVTable[12]) != MH_OK) { return 1; }
-	if (MH_CreateHook((DWORD_PTR*)pDeviceVTable[24], hookD3D11CreateQuery, reinterpret_cast<void**>(&phookD3D11CreateQuery)) != MH_OK) { return 1; }
-	if (MH_EnableHook((DWORD_PTR*)pDeviceVTable[24]) != MH_OK) { return 1; }
-	if (MH_CreateHook((DWORD_PTR*)pContextVTable[39], hookD3D11DrawIndexedInstancedIndirect, reinterpret_cast<void**>(&phookD3D11DrawIndexedInstancedIndirect)) != MH_OK) { return 1; }
-	if (MH_EnableHook((DWORD_PTR*)pContextVTable[39]) != MH_OK) { return 1; }
 	if (MH_CreateHook((DWORD_PTR*)pContextVTable[20], hookD3D11DrawIndexedInstanced, reinterpret_cast<void**>(&phookD3D11DrawIndexedInstanced)) != MH_OK) { return 1; }
 	if (MH_EnableHook((DWORD_PTR*)pContextVTable[20]) != MH_OK) { return 1; }
+	if (MH_CreateHook((DWORD_PTR*)pContextVTable[13], hookD3D11Draw, reinterpret_cast<void**>(&phookD3D11Draw)) != MH_OK) { return 1; }
+	if (MH_EnableHook((DWORD_PTR*)pContextVTable[13]) != MH_OK) { return 1; }
 	if (MH_CreateHook((DWORD_PTR*)pContextVTable[21], hookD3D11DrawInstanced, reinterpret_cast<void**>(&phookD3D11DrawInstanced)) != MH_OK) { return 1; }
 	if (MH_EnableHook((DWORD_PTR*)pContextVTable[21]) != MH_OK) { return 1; }
 	if (MH_CreateHook((DWORD_PTR*)pContextVTable[40], hookD3D11DrawInstancedIndirect, reinterpret_cast<void**>(&phookD3D11DrawInstancedIndirect)) != MH_OK) { return 1; }
 	if (MH_EnableHook((DWORD_PTR*)pContextVTable[40]) != MH_OK) { return 1; }
-	if (MH_CreateHook((DWORD_PTR*)pContextVTable[13], hookD3D11Draw, reinterpret_cast<void**>(&phookD3D11Draw)) != MH_OK) { return 1; }
-	if (MH_EnableHook((DWORD_PTR*)pContextVTable[13]) != MH_OK) { return 1; }
-	if (MH_CreateHook((DWORD_PTR*)pContextVTable[8], hookD3D11PSSetShaderResources, reinterpret_cast<void**>(&phookD3D11PSSetShaderResources)) != MH_OK) { return 1; }
-	if (MH_EnableHook((DWORD_PTR*)pContextVTable[8]) != MH_OK) { return 1; }
+	if (MH_CreateHook((DWORD_PTR*)pContextVTable[39], hookD3D11DrawIndexedInstancedIndirect, reinterpret_cast<void**>(&phookD3D11DrawIndexedInstancedIndirect)) != MH_OK) { return 1; }
+	if (MH_EnableHook((DWORD_PTR*)pContextVTable[39]) != MH_OK) { return 1; }
 
-    DWORD dwOld;
-    VirtualProtect(phookD3D11Present, 2, PAGE_EXECUTE_READWRITE, &dwOld);
+	if (MH_CreateHook((DWORD_PTR*)pContextVTable[7], hookD3D11VSSetConstantBuffers, reinterpret_cast<void**>(&phookD3D11VSSetConstantBuffers)) != MH_OK) { return 1; }
+	if (MH_EnableHook((DWORD_PTR*)pContextVTable[7]) != MH_OK) { return 1; }
+	if (MH_CreateHook((DWORD_PTR*)pContextVTable[10], hookD3D11PSSetSamplers, reinterpret_cast<void**>(&phookD3D11PSSetSamplers)) != MH_OK) { return 1; }
+	if (MH_EnableHook((DWORD_PTR*)pContextVTable[10]) != MH_OK) { return 1; }
+	if (MH_CreateHook((DWORD_PTR*)pDeviceVTable[24], hookD3D11CreateQuery, reinterpret_cast<void**>(&phookD3D11CreateQuery)) != MH_OK) { return 1; }
+	if (MH_EnableHook((DWORD_PTR*)pDeviceVTable[24]) != MH_OK) { return 1; }
+
+	DWORD dwOld;
+	VirtualProtect(phookD3D11Present, 2, PAGE_EXECUTE_READWRITE, &dwOld);
 
 	while (true) {
 		Sleep(10);
@@ -504,13 +711,13 @@ DWORD __stdcall InitializeHook(LPVOID)
 	pContext->Release();
 	pSwapChain->Release();
 
-    return NULL;
+	return NULL;
 }
 
 //==========================================================================================================================
 
 BOOL __stdcall DllMain(HINSTANCE hModule, DWORD dwReason, LPVOID lpReserved)
-{ 
+{
 	switch (dwReason)
 	{
 	case DLL_PROCESS_ATTACH: // A process is loading the DLL.
@@ -523,259 +730,213 @@ BOOL __stdcall DllMain(HINSTANCE hModule, DWORD dwReason, LPVOID lpReserved)
 	case DLL_PROCESS_DETACH: // A process unloads the DLL.
 		if (MH_Uninitialize() != MH_OK) { return 1; }
 		if (MH_DisableHook((DWORD_PTR*)pSwapChainVtable[8]) != MH_OK) { return 1; }
+		if (MH_DisableHook((DWORD_PTR*)pSwapChainVtable[13]) != MH_OK) { return 1; }
+		//if (MH_DisableHook((DWORD_PTR*)pContextVTable[18]) != MH_OK) { return 1; }
+		if (MH_DisableHook((DWORD_PTR*)pContextVTable[8]) != MH_OK) { return 1; }
+
 		if (MH_DisableHook((DWORD_PTR*)pContextVTable[12]) != MH_OK) { return 1; }
-		if (MH_DisableHook((DWORD_PTR*)pDeviceVTable[24]) != MH_OK) { return 1; }
-		if (MH_DisableHook((DWORD_PTR*)pContextVTable[39]) != MH_OK) { return 1; }
 		if (MH_DisableHook((DWORD_PTR*)pContextVTable[20]) != MH_OK) { return 1; }
+		if (MH_DisableHook((DWORD_PTR*)pContextVTable[13]) != MH_OK) { return 1; }
 		if (MH_DisableHook((DWORD_PTR*)pContextVTable[21]) != MH_OK) { return 1; }
 		if (MH_DisableHook((DWORD_PTR*)pContextVTable[40]) != MH_OK) { return 1; }
-		if (MH_DisableHook((DWORD_PTR*)pContextVTable[13]) != MH_OK) { return 1; }
-		if (MH_DisableHook((DWORD_PTR*)pContextVTable[8]) != MH_OK) { return 1; }
+		if (MH_DisableHook((DWORD_PTR*)pContextVTable[39]) != MH_OK) { return 1; }
+
+		if (MH_DisableHook((DWORD_PTR*)pContextVTable[7]) != MH_OK) { return 1; }
+		if (MH_DisableHook((DWORD_PTR*)pContextVTable[10]) != MH_OK) { return 1; }
+		if (MH_DisableHook((DWORD_PTR*)pDeviceVTable[24]) != MH_OK) { return 1; }
 		break;
 	}
 	return TRUE;
 }
 
 /*
-dx11 vtable CONTEXT index
-Index: 0 | QueryInterface
-Index: 1 | Addref
-Index: 2 | Release
-Index: 3 | GetDevice
-Index: 4 | GetPrivateData
-Index: 5 | SetPrivateData
-Index: 6 | SetPrivateDataInterface
-Index: 7 | VSSetConstantBuffers
-Index: 8 | PSSetShaderResources
-Index: 9 | PSSetShader
-Index: 10 | SetSamplers
-Index: 11 | SetShader
-Index: 12 | DrawIndexed
-Index: 13 | Draw
-Index: 14 | Map
-Index: 15 | Unmap
-Index: 16 | PSSetConstantBuffer
-Index: 17 | IASetInputLayout
-Index: 18 | IASetVertexBuffers
-Index: 19 | IASetIndexBuffer
-Index: 20 | DrawIndexedInstanced
-Index: 21 | DrawInstanced
-Index: 22 | GSSetConstantBuffers
-Index: 23 | GSSetShader
-Index: 24 | IASetPrimitiveTopology
-Index: 25 | VSSetShaderResources
-Index: 26 | VSSetSamplers
-Index: 27 | Begin
-Index: 28 | End
-Index: 29 | GetData
-Index: 30 | GSSetPredication
-Index: 31 | GSSetShaderResources
-Index: 32 | GSSetSamplers
-Index: 33 | OMSetRenderTargets
-Index: 34 | OMSetRenderTargetsAndUnorderedAccessViews
-Index: 35 | OMSetBlendState
-Index: 36 | OMSetDepthStencilState
-Index: 37 | SOSetTargets
-Index: 38 | DrawAuto
-Index: 39 | DrawIndexedInstancedIndirect
-Index: 40 | DrawInstancedIndirect
-Index: 41 | Dispatch
-Index: 42 | DispatchIndirect
-Index: 43 | RSSetState
-Index: 44 | RSSetViewports
-Index: 45 | RSSetScissorRects
-Index: 46 | CopySubresourceRegion
-Index: 47 | CopyResource
-Index: 48 | UpdateSubresource
-Index: 49 | CopyStructureCount
-Index: 50 | ClearRenderTargetView
-Index: 51 | ClearUnorderedAccessViewUint
-Index: 52 | ClearUnorderedAccessViewFloat
-Index: 53 | ClearDepthStencilView
-Index: 54 | GenerateMips
-Index: 55 | SetResourceMinLOD
-Index: 56 | GetResourceMinLOD
-Index: 57 | ResolveSubresource
-Index: 58 | ExecuteCommandList
-Index: 59 | HSSetShaderResources
-Index: 60 | HSSetShader
-Index: 61 | HSSetSamplers
-Index: 62 | HSSetConstantBuffers
-Index: 63 | DSSetShaderResources
-Index: 64 | DSSetShader
-Index: 65 | DSSetSamplers
-Index: 66 | DSSetConstantBuffers
-Index: 67 | DSSetShaderResources
-Index: 68 | CSSetUnorderedAccessViews
-Index: 69 | CSSetShader
-Index: 70 | CSSetSamplers
-Index: 71 | CSSetConstantBuffers
-Index: 72 | VSGetConstantBuffers
-Index: 73 | PSGetShaderResources
-Index: 74 | PSGetShader
-Index: 75 | PSGetSamplers
-Index: 76 | VSGetShader
-Index: 77 | PSGetConstantBuffers
-Index: 78 | IAGetInputLayout
-Index: 79 | IAGetVertexBuffers
-Index: 80 | IAGetIndexBuffer
-Index: 81 | GSGetConstantBuffers
-Index: 82 | GSGetShader
-Index: 83 | IAGetPrimitiveTopology
-Index: 84 | VSGetShaderResources
-Index: 85 | VSGetSamplers
-Index: 86 | GetPredication
-Index: 87 | GSGetShaderResources
-Index: 88 | GSGetSamplers
-Index: 89 | OMGetRenderTargets
-Index: 90 | OMGetRenderTargetsAndUnorderedAccessViews
-Index: 91 | OMGetBlendState
-Index: 92 | OMGetDepthStencilState
-Index: 93 | SOGetTargets
-Index: 94 | RSGetState
-Index: 95 | RSGetViewports
-Index: 96 | RSGetScissorRects
-Index: 97 | HSGetShaderResources
-Index: 98 | HSGetShader
-Index: 99 | HSGetSamplers
-Index: 100 | HSGetConstantBuffers
-Index: 101 | DSGetShaderResources
-Index: 102 | DSGetShader
-Index: 103 | DSGetSamplers
-Index: 104 | DSGetConstantBuffers
-Index: 105 | CSGetShaderResources
-Index: 106 | CSGetUnorderedAccessViews
-Index: 107 | CSGetShader
-Index: 108 | CSGetSamplers
-Index: 109 | CSGetConstantBuffers
-Index: 110 | ClearState
-Index: 111 | Flush
-Index: 112 | GetType
-Index: 113 | GetContextFlags
-Index: 114 | FinishCommandList
-
-
-// ID3D11 DEVICE virtuals
-*QueryInterface 						0
-*AddRef 								1
-*Release 								2
-*CreateBuffer 							3
-*CreateTexture1D 						4
-*CreateTexture2D 						5
-*CreateTexture3D 						6
-*CreateShaderResourceView				7
-*CreateUnorderedAccessView 				8
-*CreateRenderTargetView 				9
-*CreateDepthStencilView 				10
-*CreateInputLayout 						11
-*CreateVertexShader 					12
-*CreateGeometryShader 					13
-*CreateGeometryShaderWithStreamOutput	14
-*CreatePixelShader 						15
-*CreateHullShader 						16
-*CreateDomainShader						17
-*CreateComputeShader					18
-*CreateClassLinkage 					19
-*CreateBlendState 						20
-*CreateDepthStencilState 				21
-*CreateRasterizerState 					22
-*CreateSamplerState						23
-*CreateQuery 							24
-*CreatePredicate 						25
-*CreateCounter 							26
-*CreateDeferredContext 					27
-*OpenSharedResource 					28
-*CheckFormatSupport 					29
-*CheckMultisampleQualityLevels 			30
-*CheckCounterInfo 						31
-*CheckCounter 							32
-*CheckFeatureSupport 					33
-*GetPrivateData 						34
-*SetPrivateData 						35
-*SetPrivateDataInterface 				36
-*GetFeatureLevel 						37
-*GetCreationFlags 						38
-*GetDeviceRemovedReason 				39
-*GetImmediateContext 					40
-*SetExceptionMode 						41
-*GetExceptionMode 						42
-
-
-// IDXGI SWAPCHAIN virtuals
-[0]    7405CADA    (CMTUseCountedObject<CDXGISwapChain>::QueryInterface)
-[1]    7405C9A7    (CMTUseCountedObject<CDXGISwapChain>::AddRef)
-[2]    7405C9D8    (CMTUseCountedObject<CDXGISwapChain>::Release)
-[3]    7405D6BF    (CDXGISwapChain::SetPrivateData)
-[4]    7405F6FC    (CDXGISwapChain::SetPrivateDataInterface)
-[5]    7405D6AF    (CDXGISwapChain::GetPrivateData)
-[6]    7406106A    (CDXGISwapChain::GetParent)
-[7]    7405EFDE    (CDXGISwapChain::GetDevice)
-[8]    74061BD1    (CDXGISwapChain::Present)
-[9]    740617A7    (CDXGISwapChain::GetBuffer)
-[10]    74065CD6    (CDXGISwapChain::SetFullscreenState)
-[11]    740662DC    (CDXGISwapChain::GetFullscreenState)
-[12]    74061146    (CDXGISwapChain::GetDesc)
-[13]    740655ED    (CDXGISwapChain::ResizeBuffers)
-[14]    74065B8D    (CDXGISwapChain::ResizeTarget)
-[15]    7406197B    (CDXGISwapChain::GetContainingOutput)
-[16]    74066524    (CDXGISwapChain::GetFrameStatistics)
-[17]    74066A58    (CDXGISwapChain::GetLastPresentCount)
-[18]    740612C6    (CDXGISwapChain::GetDesc1)
-[19]    740613E0    (CDXGISwapChain::GetFullscreenDesc)
-[20]    740614F9    (CDXGISwapChain::GetHwnd)
-[21]    7406156D    (CDXGISwapChain::GetCoreWindow)
-[22]    74061D0D    (CDXGISwapChain[::IDXGISwapChain1]::Present1)
-[23]    74062069    (CDXGISwapChain::IsTemporaryMonoSupported)
-[24]    740615BB    (CDXGISwapChain::GetRestrictToOutput)
-[25]    740615FB    (CDXGISwapChain::SetBackgroundColor)
-[26]    740616F1    (CDXGISwapChain::GetBackgroundColor)
-[27]    7406173F    (CDXGISwapChain::SetRotation)
-[28]    74061770    (CDXGISwapChain::GetRotation)
-[29]    7405CC1A    (CMTUseCountedObject<CDXGISwapChain>::`vector deleting destructor')
-[30]    7405181E    (CMTUseCountedObject<CDXGISwapChain>::LUCCompleteLayerConstruction)
-[31]    7405CBA5    (DXGID3D10ETWRundown)
-
-
-// DXGI VTable:
-[0]	6ED3F979	(CMTUseCountedObject<CDXGISwapChain>::QueryInterface)
-[1]	6ED3F84D	(CMTUseCountedObject<CDXGISwapChain>::AddRef)
-[2]	6ED3F77D	(CMTUseCountedObject<CDXGISwapChain>::Release)
-[3]	6ED6A6D7	(CDXGISwapChain::SetPrivateData)
-[4]	6ED6A904	(CDXGISwapChain::SetPrivateDataInterface)
-[5]	6ED72BC9	(CDXGISwapChain::GetPrivateData)
-[6]	6ED6DCDD	(CDXGISwapChain::GetParent)
-[7]	6ED69BF4	(CDXGISwapChain::GetDevice)
-[8]	6ED3FAAD	(CDXGISwapChain::Present)
-[9]	6ED40209	(CDXGISwapChain::GetBuffer)
-[10]	6ED47C1C	(CDXGISwapChain::SetFullscreenState)
-[11]	6ED48CD9	(CDXGISwapChain::GetFullscreenState)
-[12]	6ED40CB1	(CDXGISwapChain::GetDesc)
-[13]	6ED48A3B	(CDXGISwapChain::ResizeBuffers)
-[14]	6ED6F153	(CDXGISwapChain::ResizeTarget)
-[15]	6ED47BA5	(CDXGISwapChain::GetContainingOutput)
-[16]	6ED6D9B5	(CDXGISwapChain::GetFrameStatistics)
-[17]	6ED327B5	(CDXGISwapChain::GetLastPresentCount)
-[18]	6ED43400	(CDXGISwapChain::GetDesc1)
-[19]	6ED6D9D0	(CDXGISwapChain::GetFullscreenDesc)
-[20]	6ED6DA90	(CDXGISwapChain::GetHwnd)
-[21]	6ED6D79F	(CDXGISwapChain::GetCoreWindow)
-[22]	6ED6E352	(?Present1@?QIDXGISwapChain2@@CDXGISwapChain@@UAGJIIPBUDXGI_PRESENT_PARAMETERS@@@Z)
-[23]	6ED6E240	(CDXGISwapChain::IsTemporaryMonoSupported)
-[24]	6ED44146	(CDXGISwapChain::GetRestrictToOutput)
-[25]	6ED6F766	(CDXGISwapChain::SetBackgroundColor)
-[26]	6ED6D6B9	(CDXGISwapChain::GetBackgroundColor)
-[27]	6ED4417B	(CDXGISwapChain::SetRotation)
-[28]	6ED6DDE3	(CDXGISwapChain::GetRotation)
-[29]	6ED6FF85	(CDXGISwapChain::SetSourceSize)
-[30]	6ED6DF4F	(CDXGISwapChain::GetSourceSize)
-[31]	6ED6FCBD	(CDXGISwapChain::SetMaximumFrameLatency)
-[32]	6ED6DBE5	(CDXGISwapChain::GetMaximumFrameLatency)
-[33]	6ED6D8CD	(CDXGISwapChain::GetFrameLatencyWaitableObject)
-[34]	6ED6FB45	(CDXGISwapChain::SetMatrixTransform)
-[35]	6ED6DAD0	(CDXGISwapChain::GetMatrixTransform)
-[36]	6ED6C155	(CDXGISwapChain::CheckMultiplaneOverlaySupportInternal)
-[37]	6ED6E82D	(CDXGISwapChain::PresentMultiplaneOverlayInternal)
-[38]	6ED4397A	(CMTUseCountedObject<CDXGISwapChain>::`vector deleting destructor')
-[39]	6ED4EAE0	(CSwapBuffer::AddRef)
-[40]	6ED46C81	(CMTUseCountedObject<CDXGISwapChain>::LUCBeginLayerDestruction)
+// from d3d11.h. Simply walk the inheritance. In C++ the order of methods in a .h file is the order in the vtable, after the vtable of inherited
+// types, so it's easy to determine what the location is without loggers.
+// IUnknown
+0	virtual HRESULT STDMETHODCALLTYPE QueryInterface
+1	virtual ULONG STDMETHODCALLTYPE AddRef
+2	virtual ULONG STDMETHODCALLTYPE Release
+// ID3D11Device
+3	virtual HRESULT STDMETHODCALLTYPE CreateBuffer
+4	virtual HRESULT STDMETHODCALLTYPE CreateTexture1D
+5	virtual HRESULT STDMETHODCALLTYPE CreateTexture2D
+6	virtual HRESULT STDMETHODCALLTYPE CreateTexture3D
+7	virtual HRESULT STDMETHODCALLTYPE CreateShaderResourceView
+8	virtual HRESULT STDMETHODCALLTYPE CreateUnorderedAccessView
+9	virtual HRESULT STDMETHODCALLTYPE CreateRenderTargetView
+10	virtual HRESULT STDMETHODCALLTYPE CreateDepthStencilView
+11	virtual HRESULT STDMETHODCALLTYPE CreateInputLayout
+12	virtual HRESULT STDMETHODCALLTYPE CreateVertexShader
+13	virtual HRESULT STDMETHODCALLTYPE CreateGeometryShader
+14	virtual HRESULT STDMETHODCALLTYPE CreateGeometryShaderWithStreamOutput
+15	virtual HRESULT STDMETHODCALLTYPE CreatePixelShader
+16	virtual HRESULT STDMETHODCALLTYPE CreateHullShader
+17	virtual HRESULT STDMETHODCALLTYPE CreateDomainShader
+18	virtual HRESULT STDMETHODCALLTYPE CreateComputeShader
+19	virtual HRESULT STDMETHODCALLTYPE CreateClassLinkage
+20	virtual HRESULT STDMETHODCALLTYPE CreateBlendState
+21	virtual HRESULT STDMETHODCALLTYPE CreateDepthStencilState
+22	virtual HRESULT STDMETHODCALLTYPE CreateRasterizerState
+23	virtual HRESULT STDMETHODCALLTYPE CreateSamplerState
+24	virtual HRESULT STDMETHODCALLTYPE CreateQuery
+25	virtual HRESULT STDMETHODCALLTYPE CreatePredicate
+26	virtual HRESULT STDMETHODCALLTYPE CreateCounter
+27	virtual HRESULT STDMETHODCALLTYPE CreateDeferredContext
+28	virtual HRESULT STDMETHODCALLTYPE OpenSharedResource
+29	virtual HRESULT STDMETHODCALLTYPE CheckFormatSupport
+30	virtual HRESULT STDMETHODCALLTYPE CheckMultisampleQualityLevels
+31	virtual void STDMETHODCALLTYPE CheckCounterInfo
+32	virtual HRESULT STDMETHODCALLTYPE CheckCounter
+33	virtual HRESULT STDMETHODCALLTYPE CheckFeatureSupport
+34	virtual HRESULT STDMETHODCALLTYPE GetPrivateData
+35	virtual HRESULT STDMETHODCALLTYPE SetPrivateData
+36	virtual HRESULT STDMETHODCALLTYPE SetPrivateDataInterface
+37	virtual D3D_FEATURE_LEVEL STDMETHODCALLTYPE GetFeatureLevel
+38	virtual UINT STDMETHODCALLTYPE GetCreationFlags
+39	virtual HRESULT STDMETHODCALLTYPE GetDeviceRemovedReason
+40	virtual void STDMETHODCALLTYPE GetImmediateContext
+41	virtual HRESULT STDMETHODCALLTYPE SetExceptionMode
+42	virtual UINT STDMETHODCALLTYPE GetExceptionMode
+---------------------------------------------------------------------------
+// IUnknown
+0	virtual HRESULT STDMETHODCALLTYPE QueryInterface
+1	virtual ULONG STDMETHODCALLTYPE AddRef
+2	virtual ULONG STDMETHODCALLTYPE Release
+// ID3D11DeviceChild
+3	virtual void STDMETHODCALLTYPE GetDevice
+4	virtual HRESULT STDMETHODCALLTYPE GetPrivateData
+5	virtual HRESULT STDMETHODCALLTYPE SetPrivateData
+6	virtual HRESULT STDMETHODCALLTYPE SetPrivateDataInterface
+// ID3D11DeviceContext
+7	virtual void STDMETHODCALLTYPE VSSetConstantBuffers
+8	virtual void STDMETHODCALLTYPE PSSetShaderResources
+9	virtual void STDMETHODCALLTYPE PSSetShader
+10	virtual void STDMETHODCALLTYPE PSSetSamplers
+11	virtual void STDMETHODCALLTYPE VSSetShader
+12	virtual void STDMETHODCALLTYPE DrawIndexed
+13	virtual void STDMETHODCALLTYPE Draw
+14	virtual HRESULT STDMETHODCALLTYPE Map
+15	virtual void STDMETHODCALLTYPE Unmap
+16	virtual void STDMETHODCALLTYPE PSSetConstantBuffers
+17	virtual void STDMETHODCALLTYPE IASetInputLayout
+18	virtual void STDMETHODCALLTYPE IASetVertexBuffers
+19	virtual void STDMETHODCALLTYPE IASetIndexBuffer
+20	virtual void STDMETHODCALLTYPE DrawIndexedInstanced
+21	virtual void STDMETHODCALLTYPE DrawInstanced
+22	virtual void STDMETHODCALLTYPE GSSetConstantBuffers
+23	virtual void STDMETHODCALLTYPE GSSetShader
+24	virtual void STDMETHODCALLTYPE IASetPrimitiveTopology
+25	virtual void STDMETHODCALLTYPE VSSetShaderResources
+26	virtual void STDMETHODCALLTYPE VSSetSamplers
+27	virtual void STDMETHODCALLTYPE Begin
+28	virtual void STDMETHODCALLTYPE End
+29	virtual HRESULT STDMETHODCALLTYPE GetData
+30	virtual void STDMETHODCALLTYPE SetPredication
+31	virtual void STDMETHODCALLTYPE GSSetShaderResources
+32	virtual void STDMETHODCALLTYPE GSSetSamplers
+33	virtual void STDMETHODCALLTYPE OMSetRenderTargets
+34	virtual void STDMETHODCALLTYPE OMSetRenderTargetsAndUnorderedAccessViews
+35	virtual void STDMETHODCALLTYPE OMSetBlendState
+36	virtual void STDMETHODCALLTYPE OMSetDepthStencilState
+37	virtual void STDMETHODCALLTYPE SOSetTargets
+38	virtual void STDMETHODCALLTYPE DrawAuto
+39	virtual void STDMETHODCALLTYPE DrawIndexedInstancedIndirect
+40	virtual void STDMETHODCALLTYPE DrawInstancedIndirect
+41	virtual void STDMETHODCALLTYPE Dispatch
+42	virtual void STDMETHODCALLTYPE DispatchIndirect
+43	virtual void STDMETHODCALLTYPE RSSetState
+44	virtual void STDMETHODCALLTYPE RSSetViewports
+45	virtual void STDMETHODCALLTYPE RSSetScissorRects
+46	virtual void STDMETHODCALLTYPE CopySubresourceRegion
+47	virtual void STDMETHODCALLTYPE CopyResource
+48	virtual void STDMETHODCALLTYPE UpdateSubresource
+49	virtual void STDMETHODCALLTYPE CopyStructureCount
+50	virtual void STDMETHODCALLTYPE ClearRenderTargetView
+51	virtual void STDMETHODCALLTYPE ClearUnorderedAccessViewUint
+52	virtual void STDMETHODCALLTYPE ClearUnorderedAccessViewFloat
+53	virtual void STDMETHODCALLTYPE ClearDepthStencilView
+54	virtual void STDMETHODCALLTYPE GenerateMips
+55	virtual void STDMETHODCALLTYPE SetResourceMinLOD
+56	virtual FLOAT STDMETHODCALLTYPE GetResourceMinLOD
+57	virtual void STDMETHODCALLTYPE ResolveSubresource
+58	virtual void STDMETHODCALLTYPE ExecuteCommandList
+59	virtual void STDMETHODCALLTYPE HSSetShaderResources
+60	virtual void STDMETHODCALLTYPE HSSetShader
+61	virtual void STDMETHODCALLTYPE HSSetSamplers
+62	virtual void STDMETHODCALLTYPE HSSetConstantBuffers
+63	virtual void STDMETHODCALLTYPE DSSetShaderResources
+64	virtual void STDMETHODCALLTYPE DSSetShader
+65	virtual void STDMETHODCALLTYPE DSSetSamplers
+66	virtual void STDMETHODCALLTYPE DSSetConstantBuffers
+67	virtual void STDMETHODCALLTYPE CSSetShaderResources
+68	virtual void STDMETHODCALLTYPE CSSetUnorderedAccessViews
+69	virtual void STDMETHODCALLTYPE CSSetShader
+70	virtual void STDMETHODCALLTYPE CSSetSamplers
+71	virtual void STDMETHODCALLTYPE CSSetConstantBuffers
+72	virtual void STDMETHODCALLTYPE VSGetConstantBuffers
+73	virtual void STDMETHODCALLTYPE PSGetShaderResources
+74	virtual void STDMETHODCALLTYPE PSGetShader
+75	virtual void STDMETHODCALLTYPE PSGetSamplers
+76	virtual void STDMETHODCALLTYPE VSGetShader
+77	virtual void STDMETHODCALLTYPE PSGetConstantBuffers
+78	virtual void STDMETHODCALLTYPE IAGetInputLayout
+79	virtual void STDMETHODCALLTYPE IAGetVertexBuffers
+80	virtual void STDMETHODCALLTYPE IAGetIndexBuffer
+81	virtual void STDMETHODCALLTYPE GSGetConstantBuffers
+82	virtual void STDMETHODCALLTYPE GSGetShader
+83	virtual void STDMETHODCALLTYPE IAGetPrimitiveTopology
+84	virtual void STDMETHODCALLTYPE VSGetShaderResources
+85	virtual void STDMETHODCALLTYPE VSGetSamplers
+86	virtual void STDMETHODCALLTYPE GetPredication
+87	virtual void STDMETHODCALLTYPE GSGetShaderResources
+88	virtual void STDMETHODCALLTYPE GSGetSamplers
+89	virtual void STDMETHODCALLTYPE OMGetRenderTargets
+90	virtual void STDMETHODCALLTYPE OMGetRenderTargetsAndUnorderedAccessViews
+91	virtual void STDMETHODCALLTYPE OMGetBlendState
+92	virtual void STDMETHODCALLTYPE OMGetDepthStencilState
+93	virtual void STDMETHODCALLTYPE SOGetTargets
+94	virtual void STDMETHODCALLTYPE RSGetState
+95	virtual void STDMETHODCALLTYPE RSGetViewports
+96	virtual void STDMETHODCALLTYPE RSGetScissorRects
+97	virtual void STDMETHODCALLTYPE HSGetShaderResources
+98	virtual void STDMETHODCALLTYPE HSGetShader
+99	virtual void STDMETHODCALLTYPE HSGetSamplers
+100	virtual void STDMETHODCALLTYPE HSGetConstantBuffers
+101	virtual void STDMETHODCALLTYPE DSGetShaderResources
+102	virtual void STDMETHODCALLTYPE DSGetShader
+103	virtual void STDMETHODCALLTYPE DSGetSamplers
+104	virtual void STDMETHODCALLTYPE DSGetConstantBuffers
+105	virtual void STDMETHODCALLTYPE CSGetShaderResources
+106	virtual void STDMETHODCALLTYPE CSGetUnorderedAccessViews
+107	virtual void STDMETHODCALLTYPE CSGetShader
+108	virtual void STDMETHODCALLTYPE CSGetSamplers
+109	virtual void STDMETHODCALLTYPE CSGetConstantBuffers
+110	virtual void STDMETHODCALLTYPE ClearState
+111	virtual void STDMETHODCALLTYPE Flush
+112	virtual D3D11_DEVICE_CONTEXT_TYPE STDMETHODCALLTYPE GetType
+113	virtual UINT STDMETHODCALLTYPE GetContextFlags
+114	virtual HRESULT STDMETHODCALLTYPE FinishCommandList
+-----------------------------------------------------------------------
+// IUnknown
+0	virtual HRESULT STDMETHODCALLTYPE QueryInterface
+1	virtual ULONG STDMETHODCALLTYPE AddRef
+2	virtual ULONG STDMETHODCALLTYPE Release
+// IDXGIObject
+3	virtual HRESULT STDMETHODCALLTYPE SetPrivateData
+4	virtual HRESULT STDMETHODCALLTYPE SetPrivateDataInterface
+5	virtual HRESULT STDMETHODCALLTYPE GetPrivateData
+6	virtual HRESULT STDMETHODCALLTYPE GetParent
+// IDXGIDeviceSubObject
+7   virtual HRESULT STDMETHODCALLTYPE GetDevice
+// IDXGISwapChain
+8	virtual HRESULT STDMETHODCALLTYPE Present
+9	virtual HRESULT STDMETHODCALLTYPE GetBuffer
+10	virtual HRESULT STDMETHODCALLTYPE SetFullscreenState
+11	virtual HRESULT STDMETHODCALLTYPE GetFullscreenState
+12	virtual HRESULT STDMETHODCALLTYPE GetDesc
+13	virtual HRESULT STDMETHODCALLTYPE ResizeBuffers
+14	virtual HRESULT STDMETHODCALLTYPE ResizeTarget
+15	virtual HRESULT STDMETHODCALLTYPE GetContainingOutput
+16	virtual HRESULT STDMETHODCALLTYPE GetFrameStatistics
+17	virtual HRESULT STDMETHODCALLTYPE GetLastPresentCount
 */
