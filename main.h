@@ -1,4 +1,4 @@
-//d3d11 w2s base for some games by n7
+//d3d11 wallhack
 
 //DX Includes
 #include <DirectXMath.h>
@@ -9,7 +9,9 @@ using namespace DirectX;
 //features deafult settings
 int Folder1 = 1;
 int Item1 = 1; //sOptions[0].Function //wallhack
-int Item2 = 0; //sOptions[1].Function //chams
+int Item2 = 1; //sOptions[1].Function //chams
+int Item3 = 0; //countEdepth
+int Item4 = 2; //countRdepth
 
 //init only once
 bool firstTime = true; 
@@ -25,14 +27,19 @@ ID3D11Texture2D* texGreen = nullptr;
 ID3D11Texture2D* texRed = nullptr;
 
 //create shaderresourceview
-ID3D11ShaderResourceView* texSRVg;
-ID3D11ShaderResourceView* texSRVr;
+ID3D11ShaderResourceView* texSRVgreen;
+ID3D11ShaderResourceView* texSRVred;
 
 //create samplerstate
 ID3D11SamplerState *pSamplerState;
+ID3D11SamplerState *pSamplerState2;
 
-//rendertarget
+//create rendertarget
 ID3D11RenderTargetView* RenderTargetView = NULL;
+
+//get rendertarget
+ID3D11RenderTargetView *pRTV[D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT];
+ID3D11DepthStencilView *pDSV;
 
 //shader
 ID3D11PixelShader* psRed = NULL;
@@ -69,13 +76,18 @@ D3D11_TEXTURE2D_DESC texdesc;
 //pssetsamplers
 UINT pssStartSlot;
 
+//return address
+void* ReturnAddress;
 
 //logger, misc
 bool logger = false;
 UINT countnum = -1;
+UINT countEdepth = 0; //0al, 10ut4, 10ssf
+UINT countRdepth = 2; //2al, 11ut4, 3ssf
 wchar_t reportValue[256];
 #define SAFE_RELEASE(x) if (x) { x->Release(); x = NULL; }
 HRESULT hr;
+bool greetings = true;
 
 //==========================================================================================================================
 
@@ -105,6 +117,20 @@ void Log(const char *fmt, ...)
 	ofstream logfile(GetDirectoryFile("log.txt"), ios::app);
 	if (logfile.is_open() && text)	logfile << text << endl;
 	logfile.close();
+}
+
+int									g_Index = -1;
+std::vector<void*>					g_Vector;
+void*								g_SelectedAddress = NULL;
+
+bool IsAddressPresent(void* Address)
+{
+	for (auto it = g_Vector.begin(); it != g_Vector.end(); ++it)
+	{
+		if (*it == Address)
+			return true;
+	}
+	return false;
 }
 
 //==========================================================================================================================
@@ -172,16 +198,48 @@ HRESULT GenerateShader(ID3D11Device* pD3DDevice, ID3D11PixelShader** pShader, fl
 //==========================================================================================================================
 
 //wh
-UINT stencilRef = 0;
-ID3D11DepthStencilState* origDepthStencilState = NULL; //orig
+enum eDepthState
+{
+	ENABLED,
+	DISABLED,
+	READ_NO_WRITE,
+	NO_READ_NO_WRITE,
 
-ID3D11DepthStencilState* depthStencilState; //depth on
-ID3D11DepthStencilState* depthStencilStatefalse; //depth off
+	ENABLED1,
+	ENABLED2,
+	ENABLED3,
+	ENABLED4,
+	ENABLED5,
+	ENABLED6,
+	ENABLED7,
+	ENABLED8,
+
+	READ_NO_WRITE1,
+	READ_NO_WRITE2,
+	READ_NO_WRITE3,
+	READ_NO_WRITE4,
+	READ_NO_WRITE5,
+	READ_NO_WRITE6,
+	READ_NO_WRITE7,
+	READ_NO_WRITE8,
+
+	_DEPTH_COUNT
+};
+
+ID3D11DepthStencilState* myDepthStencilStates[static_cast<int>(eDepthState::_DEPTH_COUNT)];
+
+void SetDepthStencilState(eDepthState aState)
+{
+	pContext->OMSetDepthStencilState(myDepthStencilStates[aState], 1);
+}
 
 //wire
 char *state;
-ID3D11RasterizerState* rwState;
-ID3D11RasterizerState* rsState;
+ID3D11RasterizerState* rDEPTHBIASState;
+ID3D11RasterizerState* rNORMALState;
+ID3D11RasterizerState* rWIREFRAMEState;
+ID3D11RasterizerState* rSOLIDState;
+#define DEPTH_BIAS_D32_FLOAT(d) (d/(1/pow(2,23)))
 
 //==========================================================================================================================
 
@@ -224,9 +282,11 @@ Menu sMenu;
 void SaveCfg()
 {
 	ofstream fout;
-	fout.open(GetDirectoryFile("d3dwv.ini"), ios::trunc);
+	fout.open(GetDirectoryFile("d3dwh.ini"), ios::trunc);
 	fout << "Item1 " << sOptions[0].Function << endl;
 	fout << "Item2 " << sOptions[1].Function << endl;
+	fout << "Item3 " << countEdepth << endl;
+	fout << "Item4 " << countRdepth << endl;
 	fout.close();
 }
 
@@ -234,9 +294,11 @@ void LoadCfg()
 {
 	ifstream fin;
 	string Word = "";
-	fin.open(GetDirectoryFile("d3dwv.ini"), ifstream::in);
+	fin.open(GetDirectoryFile("d3dwh.ini"), ifstream::in);
 	fin >> Word >> Item1;
 	fin >> Word >> Item2;
+	fin >> Word >> Item3;
+	fin >> Word >> Item4;
 	fin.close();
 }
 
@@ -291,7 +353,7 @@ void Navigation()
 
 	if (!Visible)
 		return;
-
+	
 	int value = 0;
 
 	if (GetAsyncKeyState(VK_DOWN) & 1)
@@ -337,7 +399,7 @@ void Navigation()
 			Items = 0;
 		}
 	}
-
+	
 }
 
 bool IsReady()
