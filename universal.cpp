@@ -625,10 +625,6 @@ HRESULT __stdcall hookD3D11Present(IDXGISwapChain* pSwapChain, UINT SyncInterval
 		pFontWrapper->DrawString(pContext, L"F9 = log drawfunc & depthstates", 16.0f, 400.0f, 180.0f, 0xffffffff, FW1_RESTORESTATE);
 	}
 
-	if (GetAsyncKeyState(VK_F10) & 1)
-	firstTime = true;
-
-
 	return phookD3D11Present(pSwapChain, SyncInterval, Flags);
 }
 
