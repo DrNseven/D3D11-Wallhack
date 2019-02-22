@@ -1,9 +1,10 @@
 # D3D11-Wallhack
 D3D11 Hook Wallhack x86/x64
 
-- edit universal.cpp 
-- compile with visual studio (creates .dll)
-- inject .dll into d3d11 game
+- apex: Edepth = 1; Rdepth = 3; 
+- ut4: Edepth = 11; Rdepth = 12;
+- serious sam fus: Edepth = 11; Rdepth = 4;
+- quake c: Edepth = 0; Rdepth = 2;
 
 Credits: dracorx, evolution536, test4321, Momo5000
 
