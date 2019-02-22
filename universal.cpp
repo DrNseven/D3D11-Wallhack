@@ -618,12 +618,16 @@ HRESULT __stdcall hookD3D11Present(IDXGISwapChain* pSwapChain, UINT SyncInterval
 		swprintf_s(reportValue, L"Keys: 9/0: [countRdepthstate = %d]", (eDepthState)countRdepth);
 		pFontWrapper->DrawString(pContext, reportValue, 16.0f, 400.0f, 140.0f, 0xff00ff00, FW1_RESTORESTATE);
 
+		swprintf_s(reportValue, L"[orig depth = %d]", origdsd.DepthFunc);
+		pFontWrapper->DrawString(pContext, reportValue, 16.0f, 400.0f, 160.0f, 0xff00ff00, FW1_RESTORESTATE);
+
 		//swprintf_s(reportValue, L"Selected Address = [0x%X]", g_SelectedAddress);
-		//pFontWrapper->DrawString(pContext, reportValue, 16.0f, 400.0f, 160.0f, 0xff00ff00, FW1_RESTORESTATE);
+		//pFontWrapper->DrawString(pContext, reportValue, 16.0f, 400.0f, 180.0f, 0xff00ff00, FW1_RESTORESTATE);
 
 
-		pFontWrapper->DrawString(pContext, L"F9 = log drawfunc & depthstates", 16.0f, 400.0f, 180.0f, 0xffffffff, FW1_RESTORESTATE);
+		pFontWrapper->DrawString(pContext, L"F9 = log drawfunc & depthstates", 16.0f, 400.0f, 200.0f, 0xffffffff, FW1_RESTORESTATE);
 	}
+
 
 	return phookD3D11Present(pSwapChain, SyncInterval, Flags);
 }
@@ -660,11 +664,15 @@ void __stdcall hookD3D11DrawIndexed(ID3D11DeviceContext* pContext, UINT IndexCou
 	if (vscBuffer != NULL) { vscBuffer->Release(); vscBuffer = NULL; }
 	
 
-	ReturnAddress = _ReturnAddress();
-	//ReturnAddress = _AddressOfReturnAddress();
+	//get ret addr
+	ReturnAddress = _ReturnAddress(); //usually not needed
 
 	//get rendertarget
 	pContext->OMGetRenderTargets(D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT, &pRTV[0], &pDSV);
+
+	//get orig depthstencil
+	pContext->OMGetDepthStencilState(&origDepthStencilState, &stencilRef); //get original
+	if(origDepthStencilState && logger) origDepthStencilState->GetDesc(&origdsd);
 
 	//wallhack/chams
 	if (sOptions[0].Function == 1 || sOptions[1].Function == 1 || sOptions[1].Function == 2) //if wallhack/chams option is enabled in menu
@@ -676,15 +684,15 @@ void __stdcall hookD3D11DrawIndexed(ID3D11DeviceContext* pContext, UINT IndexCou
 	//qc models
 	//if (Stride >= 16 && vedesc.ByteWidth >= 14000000 && vedesc.ByteWidth <= 45354840)
 	//al models
-	//if (Stride == 28 && ((DWORD)ReturnAddress & 0x0000FFFF) == 0x00002d02)
+	//if (Stride == 28 && ((DWORD)ReturnAddress & 0x0000FFFF) == 0x00002d02) //0x78022d02
 	{	
 		//depth OFF for wallhack and chams
 		if (sOptions[0].Function == 1 || sOptions[1].Function == 1 || sOptions[1].Function == 2)
 		{
 			if (rDEPTHBIASState) pContext->RSSetState(rDEPTHBIASState); // set depth bias to do the stencil check in this draw against previously written biased values with same bias
-			if ((eDepthState)countRdepth >= 0 && (eDepthState)countRdepth <= 19) SetDepthStencilState((eDepthState)countRdepth); //3=ut4 // read depth buffers with correct comparison func (LESS) but not write them (WRITE_MASK_ZERO)
+			if ((eDepthState)countRdepth >= 0 && (eDepthState)countRdepth <= 20) SetDepthStencilState((eDepthState)countRdepth); // read depth buffers with correct comparison func (LESS) but not write them (WRITE_MASK_ZERO)
 		}
-		if((eDepthState)countRdepth >= 4 && (eDepthState)countRdepth <= 19)
+		if((eDepthState)countRdepth >= 5 && (eDepthState)countRdepth <= 20)
 		SAFE_RELEASE(myDepthStencilStates[(eDepthState)countRdepth]);
 
 		//shader chams
@@ -703,7 +711,11 @@ void __stdcall hookD3D11DrawIndexed(ID3D11DeviceContext* pContext, UINT IndexCou
 		//depth ON for wallhack and chams
 		if (sOptions[0].Function == 1 || sOptions[1].Function == 1 || sOptions[1].Function == 2)
 		{
-			if ((eDepthState)countEdepth >= 0 && (eDepthState)countEdepth <= 19) SetDepthStencilState((eDepthState)countEdepth); //8=ut4
+			//orig depth on for 0
+			if ((eDepthState)countEdepth == 0)
+				pContext->OMSetDepthStencilState(origDepthStencilState, stencilRef); //orig
+
+			if ((eDepthState)countEdepth >= 1 && (eDepthState)countEdepth <= 20) SetDepthStencilState((eDepthState)countEdepth); //custom
 			if (rNORMALState) pContext->RSSetState(rNORMALState);
 		}
 
@@ -736,6 +748,12 @@ void __stdcall hookD3D11DrawIndexed(ID3D11DeviceContext* pContext, UINT IndexCou
 	
 	}
 
+	//in qc stride 16 needs to be erased to make wallhack work
+	//if (sOptions[0].Function == 1)
+	//if (Stride == 16 && IndexCount > 120)
+	//{
+		//return;
+	//}
 
 	//small bruteforce logger
 	//press ALT + L in game to enable logger
@@ -748,7 +766,7 @@ void __stdcall hookD3D11DrawIndexed(ID3D11DeviceContext* pContext, UINT IndexCou
 					Stride, IndexCount, indesc.ByteWidth, vedesc.ByteWidth, pscdesc.ByteWidth, vscdesc.ByteWidth, pssrStartSlot, vscStartSlot, pssStartSlot, vedesc.Usage, ReturnAddress); //Descr.Format, Descr.Buffer.NumElements, texdesc.Format, texdesc.Height, texdesc.Width 
 
 		if (GetAsyncKeyState(VK_F9) & 1)
-			Log("Stride == %d && countEdepth == %d && countRdepth == %d && ReturnAddress == 0x%X", Stride, countEdepth, countRdepth, ReturnAddress);
+			Log("Stride == %d && origdsd.DepthFunc == %d && countEdepth == %d && countRdepth == %d && ReturnAddress == 0x%X", Stride, origdsd.DepthFunc, countEdepth, countRdepth, ReturnAddress);
 
 		if (!IsAddressPresent(ReturnAddress))
 			g_Vector.push_back(ReturnAddress);

@@ -82,8 +82,8 @@ void* ReturnAddress;
 //logger, misc
 bool logger = false;
 UINT countnum = -1;
-UINT countEdepth = 0; //0al, 10ut4, 10ssf
-UINT countRdepth = 2; //2al, 11ut4, 3ssf
+UINT countEdepth = 0; //1al, 11ut4, 11ssf, 0qc
+UINT countRdepth = 2; //3al, 12ut4, 4ssf, 2qc
 wchar_t reportValue[256];
 #define SAFE_RELEASE(x) if (x) { x->Release(); x = NULL; }
 HRESULT hr;
@@ -197,9 +197,15 @@ HRESULT GenerateShader(ID3D11Device* pD3DDevice, ID3D11PixelShader** pShader, fl
 
 //==========================================================================================================================
 
+//orig
+UINT stencilRef = 0;
+D3D11_DEPTH_STENCIL_DESC origdsd;
+ID3D11DepthStencilState* origDepthStencilState = NULL;
+
 //wh
 enum eDepthState
 {
+	ORIGINAL,
 	ENABLED,
 	DISABLED,
 	READ_NO_WRITE,
