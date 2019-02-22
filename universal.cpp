@@ -612,10 +612,10 @@ HRESULT __stdcall hookD3D11Present(IDXGISwapChain* pSwapChain, UINT SyncInterval
 		swprintf_s(reportValue, L"Keys: 5/6: find Models, Del = Log [countnum = %d]", countnum);
 		pFontWrapper->DrawString(pContext, reportValue, 16.0f, 400.0f, 100.0f, 0xff00ff00, FW1_RESTORESTATE);
 
-		swprintf_s(reportValue, L"Keys: 7/8: [countRdepthstate = %d]", (eDepthState)countEdepth);
+		swprintf_s(reportValue, L"Keys: 7/8: [countEdepthstate = %d]", (eDepthState)countEdepth);
 		pFontWrapper->DrawString(pContext, reportValue, 16.0f, 400.0f, 120.0f, 0xff00ff00, FW1_RESTORESTATE);
 
-		swprintf_s(reportValue, L"Keys: 9/0: [countEdepthstate = %d]", (eDepthState)countRdepth);
+		swprintf_s(reportValue, L"Keys: 9/0: [countRdepthstate = %d]", (eDepthState)countRdepth);
 		pFontWrapper->DrawString(pContext, reportValue, 16.0f, 400.0f, 140.0f, 0xff00ff00, FW1_RESTORESTATE);
 
 		//swprintf_s(reportValue, L"Selected Address = [0x%X]", g_SelectedAddress);
