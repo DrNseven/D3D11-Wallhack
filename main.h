@@ -1,20 +1,15 @@
-//d3d11 wallhack
-
-//DX Includes
-#include <DirectXMath.h>
-using namespace DirectX;
+//d3d11 wallhack (main.h)
 
 //==========================================================================================================================
 
 //features deafult settings
-int Folder1 = 1;
-int Item1 = 1; //sOptions[0].Function //wallhack
-int Item2 = 1; //sOptions[1].Function //chams
-int Item3 = 0; //countEdepth
-int Item4 = 2; //countRdepth
+bool Wallhack=true;
+bool ShaderChams = false;
+bool TextureChams = false;
 
 //init only once
 bool firstTime = true; 
+bool createdepthstencil = true;
 
 //viewport
 UINT vps = 1;
@@ -73,17 +68,22 @@ ID3D11Resource *Resource;
 D3D11_SHADER_RESOURCE_VIEW_DESC Descr;
 D3D11_TEXTURE2D_DESC texdesc;
 
-//pssetsamplers
-UINT pssStartSlot;
-
 //return address
 void* ReturnAddress;
 
+//wndproc
+HWND window = nullptr;
+bool ShowMenu = false;
+bool ShowAltMenu = false;
+static WNDPROC OriginalWndProcHandler = nullptr;
+
 //logger, misc
 bool logger = false;
-UINT countnum = -1;
-UINT countEdepth = 0; //1al, 11ut4, 11ssf, 0qc
-UINT countRdepth = 2; //3al, 12ut4, 4ssf, 2qc
+int countnum = -1;
+int countStride = -1;
+int countIndexCount = -1;
+int countEdepth = 0; //1al, 11ut4, 11ssf, 0qc
+int countRdepth = 2; //3al, 12ut4, 4ssf, 2qc
 wchar_t reportValue[256];
 #define SAFE_RELEASE(x) if (x) { x->Release(); x = NULL; }
 HRESULT hr;
@@ -138,27 +138,6 @@ bool IsAddressPresent(void* Address)
 //generate shader func
 HRESULT GenerateShader(ID3D11Device* pD3DDevice, ID3D11PixelShader** pShader, float r, float g, float b)
 {
-	/*
-	//texture sample chams bright
-	const char szCast[] =
-		"struct PS_INPUT\
-			{\
-			float4 pos : SV_POSITION;\
-			float4 col : COLOR0;\
-			float2 uv  : TEXCOORD0;\
-			};\
-			sampler sampler0;\
-			Texture2D texture0;\
-			\
-			float4 main(PS_INPUT input) : SV_Target\
-			{\
-			float4 out_col = input.col.bgra + texture0.Sample(sampler0, input.uv); \
-			out_col.g = %f; \
-			out_col.a = 1.0f; \
-			return out_col; \
-			}";
-	*/
-
 	char szCast[] = "struct VS_OUT"
 		"{"
 		" float4 Position : SV_Position;"
@@ -232,6 +211,9 @@ enum eDepthState
 	_DEPTH_COUNT
 };
 
+int EDepth = (eDepthState)countEdepth;
+int RDepth = (eDepthState)countRdepth;
+
 ID3D11DepthStencilState* myDepthStencilStates[static_cast<int>(eDepthState::_DEPTH_COUNT)];
 
 void SetDepthStencilState(eDepthState aState)
@@ -249,50 +231,17 @@ ID3D11RasterizerState* rSOLIDState;
 
 //==========================================================================================================================
 
-//menu
-#define MAX_ITEMS 25
-
-#define T_FOLDER 1
-#define T_OPTION 2
-#define T_ONETWOOPTION 3
-
-#define LineH 15
-
-struct Options {
-	LPCWSTR Name;
-	int	Function;
-	BYTE Type;
-};
-
-struct Menu {
-	LPCWSTR Title;
-	int x;
-	int y;
-	int w;
-};
-
-DWORD Color_Font;
-DWORD Color_On;
-DWORD Color_Off;
-DWORD Color_Folder;
-DWORD Color_Current;
-
-bool Is_Ready, Visible;
-int Items, Cur_Pos;
-
-Options sOptions[MAX_ITEMS];
-Menu sMenu;
-
 #include <string>
 #include <fstream>
 void SaveCfg()
 {
 	ofstream fout;
 	fout.open(GetDirectoryFile("d3dwh.ini"), ios::trunc);
-	fout << "Item1 " << sOptions[0].Function << endl;
-	fout << "Item2 " << sOptions[1].Function << endl;
-	fout << "Item3 " << countEdepth << endl;
-	fout << "Item4 " << countRdepth << endl;
+	fout << "Wallhack " << Wallhack << endl;
+	fout << "ShaderChams " << ShaderChams << endl;
+	fout << "TextureChams " << TextureChams << endl;
+	fout << "EDepth " << countEdepth << endl;
+	fout << "RDepth " << countRdepth << endl;
 	fout.close();
 }
 
@@ -301,181 +250,361 @@ void LoadCfg()
 	ifstream fin;
 	string Word = "";
 	fin.open(GetDirectoryFile("d3dwh.ini"), ifstream::in);
-	fin >> Word >> Item1;
-	fin >> Word >> Item2;
-	fin >> Word >> Item3;
-	fin >> Word >> Item4;
+	fin >> Word >> Wallhack;
+	fin >> Word >> ShaderChams;
+	fin >> Word >> TextureChams;
+	fin >> Word >> EDepth;
+	fin >> Word >> RDepth;
 	fin.close();
 }
 
-void JBMenu(void)
+void CreateDepthStencilStates()
 {
-	Visible = true;
-}
-
-void Init_Menu(ID3D11DeviceContext *pContext, LPCWSTR Title, int x, int y)
-{
-	Is_Ready = true;
-	sMenu.Title = Title;
-	sMenu.x = x;
-	sMenu.y = y;
-}
-
-void AddFolder(LPCWSTR Name, int Pointer)
-{
-	sOptions[Items].Name = (LPCWSTR)Name;
-	sOptions[Items].Function = Pointer;
-	sOptions[Items].Type = T_FOLDER;
-	Items++;
-}
-
-void AddOption(LPCWSTR Name, int Pointer, int *Folder)
-{
-	if (*Folder == 0)
-		return;
-	sOptions[Items].Name = Name;
-	sOptions[Items].Function = Pointer;
-	sOptions[Items].Type = T_OPTION;
-	Items++;
-}
-
-void AddOneTwoOption(LPCWSTR Name, int Pointer, int *Folder)
-{
-	if (*Folder == 0)
-		return;
-	sOptions[Items].Name = Name;
-	sOptions[Items].Function = Pointer;
-	sOptions[Items].Type = T_ONETWOOPTION;
-	Items++;
-}
-
-void Navigation()
-{
-	if (GetAsyncKeyState(VK_INSERT) & 1)
+	//create depthstencilstates
+	if (createdepthstencil)
 	{
-		SaveCfg(); //save settings
-		Visible = !Visible;
+		createdepthstencil = false; //once
+
+		D3D11_DEPTH_STENCIL_DESC  stencilDesc;
+		stencilDesc.DepthFunc = D3D11_COMPARISON_LESS;
+		stencilDesc.StencilEnable = true;
+		stencilDesc.StencilReadMask = 0xFF;
+		stencilDesc.StencilWriteMask = 0xFF;
+		stencilDesc.FrontFace.StencilFailOp = D3D11_STENCIL_OP_KEEP;
+		stencilDesc.FrontFace.StencilDepthFailOp = D3D11_STENCIL_OP_INCR;
+		stencilDesc.FrontFace.StencilPassOp = D3D11_STENCIL_OP_KEEP;
+		stencilDesc.FrontFace.StencilFunc = D3D11_COMPARISON_ALWAYS;
+		stencilDesc.BackFace.StencilFailOp = D3D11_STENCIL_OP_KEEP;
+		stencilDesc.BackFace.StencilDepthFailOp = D3D11_STENCIL_OP_DECR;
+		stencilDesc.BackFace.StencilPassOp = D3D11_STENCIL_OP_KEEP;
+		stencilDesc.BackFace.StencilFunc = D3D11_COMPARISON_ALWAYS;
+
+		stencilDesc.DepthEnable = true;
+		stencilDesc.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ALL;
+		pDevice->CreateDepthStencilState(&stencilDesc, &myDepthStencilStates[static_cast<int>(eDepthState::ENABLED)]);
+
+		stencilDesc.DepthEnable = false;
+		stencilDesc.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ALL;
+		pDevice->CreateDepthStencilState(&stencilDesc, &myDepthStencilStates[static_cast<int>(eDepthState::DISABLED)]);
+
+		stencilDesc.DepthEnable = false;
+		stencilDesc.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ZERO;
+		stencilDesc.StencilEnable = false;
+		stencilDesc.StencilReadMask = UINT8(0xFF);
+		stencilDesc.StencilWriteMask = 0x0;
+		pDevice->CreateDepthStencilState(&stencilDesc, &myDepthStencilStates[static_cast<int>(eDepthState::NO_READ_NO_WRITE)]);
+
+		stencilDesc.DepthEnable = true;
+		//stencilDesc.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ALL;
+		stencilDesc.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ZERO;
+		stencilDesc.DepthFunc = D3D11_COMPARISON_LESS;
+		stencilDesc.StencilEnable = false;
+		stencilDesc.StencilReadMask = UINT8(0xFF);
+		stencilDesc.StencilWriteMask = 0x0;
+
+		stencilDesc.FrontFace.StencilFailOp = D3D11_STENCIL_OP_ZERO;
+		stencilDesc.FrontFace.StencilDepthFailOp = D3D11_STENCIL_OP_ZERO;
+		stencilDesc.FrontFace.StencilPassOp = D3D11_STENCIL_OP_KEEP;
+		stencilDesc.FrontFace.StencilFunc = D3D11_COMPARISON_EQUAL;
+
+		stencilDesc.BackFace.StencilFailOp = D3D11_STENCIL_OP_ZERO;
+		stencilDesc.BackFace.StencilDepthFailOp = D3D11_STENCIL_OP_ZERO;
+		stencilDesc.BackFace.StencilPassOp = D3D11_STENCIL_OP_ZERO;
+		stencilDesc.BackFace.StencilFunc = D3D11_COMPARISON_NEVER;
+		pDevice->CreateDepthStencilState(&stencilDesc, &myDepthStencilStates[static_cast<int>(eDepthState::READ_NO_WRITE)]);
+
+
+		//create depthstencilstate2
+		D3D11_DEPTH_STENCIL_DESC stencilDesc1;
+		stencilDesc1.DepthFunc = D3D11_COMPARISON_NEVER;
+		stencilDesc1.StencilEnable = true;
+		stencilDesc1.StencilReadMask = 0xFF;
+		stencilDesc1.StencilWriteMask = 0xFF;
+		stencilDesc1.FrontFace.StencilFailOp = D3D11_STENCIL_OP_KEEP;
+		stencilDesc1.FrontFace.StencilDepthFailOp = D3D11_STENCIL_OP_INCR;
+		stencilDesc1.FrontFace.StencilPassOp = D3D11_STENCIL_OP_KEEP;
+		stencilDesc1.FrontFace.StencilFunc = D3D11_COMPARISON_NEVER;
+		stencilDesc1.BackFace.StencilFailOp = D3D11_STENCIL_OP_KEEP;
+		stencilDesc1.BackFace.StencilDepthFailOp = D3D11_STENCIL_OP_DECR;
+		stencilDesc1.BackFace.StencilPassOp = D3D11_STENCIL_OP_KEEP;
+		stencilDesc1.BackFace.StencilFunc = D3D11_COMPARISON_NEVER;
+		stencilDesc1.DepthEnable = true;
+		stencilDesc1.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ALL;
+		pDevice->CreateDepthStencilState(&stencilDesc1, &myDepthStencilStates[static_cast<int>(eDepthState::ENABLED1)]);
+
+		D3D11_DEPTH_STENCIL_DESC stencilDesc2;
+		stencilDesc2.DepthFunc = (D3D11_COMPARISON_FUNC)2;
+		stencilDesc2.StencilEnable = true;
+		stencilDesc2.StencilReadMask = 0xFF;
+		stencilDesc2.StencilWriteMask = 0xFF;
+		stencilDesc2.FrontFace.StencilFailOp = D3D11_STENCIL_OP_KEEP;
+		stencilDesc2.FrontFace.StencilDepthFailOp = D3D11_STENCIL_OP_INCR;
+		stencilDesc2.FrontFace.StencilPassOp = D3D11_STENCIL_OP_KEEP;
+		//stencilDesc2.FrontFace.StencilFunc = (D3D11_COMPARISON_FUNC)2;
+		stencilDesc2.FrontFace.StencilFunc = D3D11_COMPARISON_ALWAYS;
+		stencilDesc2.BackFace.StencilFailOp = D3D11_STENCIL_OP_KEEP;
+		stencilDesc2.BackFace.StencilDepthFailOp = D3D11_STENCIL_OP_DECR;
+		stencilDesc2.BackFace.StencilPassOp = D3D11_STENCIL_OP_KEEP;
+		//stencilDesc2.BackFace.StencilFunc = (D3D11_COMPARISON_FUNC)2;
+		stencilDesc2.BackFace.StencilFunc = D3D11_COMPARISON_ALWAYS;
+		stencilDesc2.DepthEnable = true;
+		stencilDesc2.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ALL;
+		pDevice->CreateDepthStencilState(&stencilDesc2, &myDepthStencilStates[static_cast<int>(eDepthState::ENABLED2)]);
+
+		D3D11_DEPTH_STENCIL_DESC stencilDesc3;
+		stencilDesc3.DepthFunc = (D3D11_COMPARISON_FUNC)3;
+		stencilDesc3.StencilEnable = true;
+		stencilDesc3.StencilReadMask = 0xFF;
+		stencilDesc3.StencilWriteMask = 0xFF;
+		stencilDesc3.FrontFace.StencilFailOp = D3D11_STENCIL_OP_KEEP;
+		stencilDesc3.FrontFace.StencilDepthFailOp = D3D11_STENCIL_OP_INCR;
+		stencilDesc3.FrontFace.StencilPassOp = D3D11_STENCIL_OP_KEEP;
+		stencilDesc3.FrontFace.StencilFunc = (D3D11_COMPARISON_FUNC)3;
+		stencilDesc3.BackFace.StencilFailOp = D3D11_STENCIL_OP_KEEP;
+		stencilDesc3.BackFace.StencilDepthFailOp = D3D11_STENCIL_OP_DECR;
+		stencilDesc3.BackFace.StencilPassOp = D3D11_STENCIL_OP_KEEP;
+		stencilDesc3.BackFace.StencilFunc = (D3D11_COMPARISON_FUNC)3;
+		stencilDesc3.DepthEnable = true;
+		stencilDesc3.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ALL;
+		pDevice->CreateDepthStencilState(&stencilDesc3, &myDepthStencilStates[static_cast<int>(eDepthState::ENABLED3)]);
+
+		D3D11_DEPTH_STENCIL_DESC stencilDesc4;
+		stencilDesc4.DepthFunc = (D3D11_COMPARISON_FUNC)4;
+		stencilDesc4.StencilEnable = true;
+		stencilDesc4.StencilReadMask = 0xFF;
+		stencilDesc4.StencilWriteMask = 0xFF;
+		stencilDesc4.FrontFace.StencilFailOp = D3D11_STENCIL_OP_KEEP;
+		stencilDesc4.FrontFace.StencilDepthFailOp = D3D11_STENCIL_OP_INCR;
+		stencilDesc4.FrontFace.StencilPassOp = D3D11_STENCIL_OP_KEEP;
+		stencilDesc4.FrontFace.StencilFunc = (D3D11_COMPARISON_FUNC)4;
+		stencilDesc4.BackFace.StencilFailOp = D3D11_STENCIL_OP_KEEP;
+		stencilDesc4.BackFace.StencilDepthFailOp = D3D11_STENCIL_OP_DECR;
+		stencilDesc4.BackFace.StencilPassOp = D3D11_STENCIL_OP_KEEP;
+		stencilDesc4.BackFace.StencilFunc = (D3D11_COMPARISON_FUNC)4;
+		stencilDesc4.DepthEnable = true;
+		stencilDesc4.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ALL;
+		pDevice->CreateDepthStencilState(&stencilDesc4, &myDepthStencilStates[static_cast<int>(eDepthState::ENABLED4)]);
+
+		D3D11_DEPTH_STENCIL_DESC stencilDesc5;
+		stencilDesc5.DepthFunc = (D3D11_COMPARISON_FUNC)5;
+		stencilDesc5.StencilEnable = true;
+		stencilDesc5.StencilReadMask = 0xFF;
+		stencilDesc5.StencilWriteMask = 0xFF;
+		stencilDesc5.FrontFace.StencilFailOp = D3D11_STENCIL_OP_KEEP;
+		stencilDesc5.FrontFace.StencilDepthFailOp = D3D11_STENCIL_OP_INCR;
+		stencilDesc5.FrontFace.StencilPassOp = D3D11_STENCIL_OP_KEEP;
+		stencilDesc5.FrontFace.StencilFunc = (D3D11_COMPARISON_FUNC)5;
+		stencilDesc5.BackFace.StencilFailOp = D3D11_STENCIL_OP_KEEP;
+		stencilDesc5.BackFace.StencilDepthFailOp = D3D11_STENCIL_OP_DECR;
+		stencilDesc5.BackFace.StencilPassOp = D3D11_STENCIL_OP_KEEP;
+		stencilDesc5.BackFace.StencilFunc = (D3D11_COMPARISON_FUNC)5;
+		stencilDesc5.DepthEnable = true;
+		stencilDesc5.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ALL;
+		pDevice->CreateDepthStencilState(&stencilDesc5, &myDepthStencilStates[static_cast<int>(eDepthState::ENABLED5)]);
+
+		D3D11_DEPTH_STENCIL_DESC stencilDesc6;
+		stencilDesc6.DepthFunc = (D3D11_COMPARISON_FUNC)6;
+		stencilDesc6.StencilEnable = true;
+		stencilDesc6.StencilReadMask = 0xFF;
+		stencilDesc6.StencilWriteMask = 0xFF;
+		stencilDesc6.FrontFace.StencilFailOp = D3D11_STENCIL_OP_KEEP;
+		stencilDesc6.FrontFace.StencilDepthFailOp = D3D11_STENCIL_OP_INCR;
+		stencilDesc6.FrontFace.StencilPassOp = D3D11_STENCIL_OP_KEEP;
+		stencilDesc6.FrontFace.StencilFunc = (D3D11_COMPARISON_FUNC)6;
+		stencilDesc6.BackFace.StencilFailOp = D3D11_STENCIL_OP_KEEP;
+		stencilDesc6.BackFace.StencilDepthFailOp = D3D11_STENCIL_OP_DECR;
+		stencilDesc6.BackFace.StencilPassOp = D3D11_STENCIL_OP_KEEP;
+		stencilDesc6.BackFace.StencilFunc = (D3D11_COMPARISON_FUNC)6;
+		stencilDesc6.DepthEnable = true;
+		stencilDesc6.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ALL;
+		pDevice->CreateDepthStencilState(&stencilDesc6, &myDepthStencilStates[static_cast<int>(eDepthState::ENABLED6)]);
+
+		D3D11_DEPTH_STENCIL_DESC stencilDesc7;
+		ZeroMemory(&stencilDesc7, sizeof(D3D11_DEPTH_STENCIL_DESC));
+		//stencilDesc7.DepthEnable = true;
+		stencilDesc7.DepthFunc = (D3D11_COMPARISON_FUNC)7;
+		stencilDesc7.StencilEnable = true;
+		stencilDesc7.StencilReadMask = 0xFF;
+		stencilDesc7.StencilWriteMask = 0xFF;
+		stencilDesc7.FrontFace.StencilFailOp = D3D11_STENCIL_OP_KEEP;
+		stencilDesc7.FrontFace.StencilDepthFailOp = D3D11_STENCIL_OP_INCR;
+		stencilDesc7.FrontFace.StencilPassOp = D3D11_STENCIL_OP_KEEP;
+		stencilDesc7.FrontFace.StencilFunc = (D3D11_COMPARISON_FUNC)7;
+		stencilDesc7.BackFace.StencilFailOp = D3D11_STENCIL_OP_KEEP;
+		stencilDesc7.BackFace.StencilDepthFailOp = D3D11_STENCIL_OP_DECR;
+		stencilDesc7.BackFace.StencilPassOp = D3D11_STENCIL_OP_KEEP;
+		stencilDesc7.BackFace.StencilFunc = (D3D11_COMPARISON_FUNC)7;
+		stencilDesc7.DepthEnable = true;
+		stencilDesc7.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ALL;
+		pDevice->CreateDepthStencilState(&stencilDesc7, &myDepthStencilStates[static_cast<int>(eDepthState::ENABLED7)]);
+
+		D3D11_DEPTH_STENCIL_DESC stencilDesc8;
+		ZeroMemory(&stencilDesc8, sizeof(D3D11_DEPTH_STENCIL_DESC));
+		//stencilDesc8.DepthEnable = false;
+		stencilDesc8.DepthFunc = (D3D11_COMPARISON_FUNC)8;//5
+		stencilDesc8.StencilEnable = true;
+		stencilDesc8.StencilReadMask = 0xFF;
+		stencilDesc8.StencilWriteMask = 0xFF;
+		stencilDesc8.FrontFace.StencilFailOp = D3D11_STENCIL_OP_KEEP;
+		stencilDesc8.FrontFace.StencilDepthFailOp = D3D11_STENCIL_OP_INCR;
+		stencilDesc8.FrontFace.StencilPassOp = D3D11_STENCIL_OP_KEEP;
+		stencilDesc8.FrontFace.StencilFunc = (D3D11_COMPARISON_FUNC)8;
+		stencilDesc8.BackFace.StencilFailOp = D3D11_STENCIL_OP_KEEP;
+		stencilDesc8.BackFace.StencilDepthFailOp = D3D11_STENCIL_OP_DECR;
+		stencilDesc8.BackFace.StencilPassOp = D3D11_STENCIL_OP_KEEP;
+		stencilDesc8.BackFace.StencilFunc = (D3D11_COMPARISON_FUNC)8;
+		stencilDesc8.DepthEnable = true;
+		stencilDesc8.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ALL;
+		pDevice->CreateDepthStencilState(&stencilDesc8, &myDepthStencilStates[static_cast<int>(eDepthState::ENABLED8)]);
+
+		//stencilDesc.DepthEnable = false;
+		//stencilDesc.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ALL;
+		//pDevice->CreateDepthStencilState(&stencilDesc, &myDepthStencilStates[static_cast<int>(eDepthState::DISABLED)]);
+
+		//stencilDesc.DepthEnable = false;
+		//stencilDesc.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ZERO;
+		//stencilDesc.StencilEnable = false;
+		//stencilDesc.StencilReadMask = UINT8(0xFF);
+		//stencilDesc.StencilWriteMask = 0x0;
+		//pDevice->CreateDepthStencilState(&stencilDesc, &myDepthStencilStates[static_cast<int>(eDepthState::NO_READ_NO_WRITE)]);
+
+		D3D11_DEPTH_STENCIL_DESC stencilDescRNW1;
+		stencilDescRNW1.DepthEnable = true;
+		//stencilDescRNW1.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ALL;
+		stencilDescRNW1.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ZERO;
+		stencilDescRNW1.DepthFunc = D3D11_COMPARISON_NEVER;
+		stencilDescRNW1.StencilEnable = false;
+		stencilDescRNW1.StencilReadMask = UINT8(0xFF);
+		stencilDescRNW1.StencilWriteMask = 0x0;
+		stencilDescRNW1.FrontFace.StencilFailOp = D3D11_STENCIL_OP_ZERO;
+		stencilDescRNW1.FrontFace.StencilDepthFailOp = D3D11_STENCIL_OP_ZERO;
+		stencilDescRNW1.FrontFace.StencilPassOp = D3D11_STENCIL_OP_KEEP;
+		stencilDescRNW1.FrontFace.StencilFunc = D3D11_COMPARISON_NEVER;
+		stencilDescRNW1.BackFace.StencilFailOp = D3D11_STENCIL_OP_ZERO;
+		stencilDescRNW1.BackFace.StencilDepthFailOp = D3D11_STENCIL_OP_ZERO;
+		stencilDescRNW1.BackFace.StencilPassOp = D3D11_STENCIL_OP_ZERO;
+		stencilDescRNW1.BackFace.StencilFunc = D3D11_COMPARISON_NEVER;
+		pDevice->CreateDepthStencilState(&stencilDescRNW1, &myDepthStencilStates[static_cast<int>(eDepthState::READ_NO_WRITE1)]);
+
+		D3D11_DEPTH_STENCIL_DESC stencilDescRNW2;
+		stencilDescRNW2.DepthEnable = true;
+		stencilDescRNW2.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ZERO;
+		stencilDescRNW2.DepthFunc = (D3D11_COMPARISON_FUNC)2;
+		stencilDescRNW2.StencilEnable = false;
+		stencilDescRNW2.StencilReadMask = UINT8(0xFF);
+		stencilDescRNW2.StencilWriteMask = 0x0;
+		stencilDescRNW2.FrontFace.StencilFailOp = D3D11_STENCIL_OP_ZERO;
+		stencilDescRNW2.FrontFace.StencilDepthFailOp = D3D11_STENCIL_OP_ZERO;
+		stencilDescRNW2.FrontFace.StencilPassOp = D3D11_STENCIL_OP_KEEP;
+		//stencilDescRNW2.FrontFace.StencilFunc = (D3D11_COMPARISON_FUNC)2;
+		stencilDescRNW2.FrontFace.StencilFunc = D3D11_COMPARISON_EQUAL;
+		stencilDescRNW2.BackFace.StencilFailOp = D3D11_STENCIL_OP_ZERO;
+		stencilDescRNW2.BackFace.StencilDepthFailOp = D3D11_STENCIL_OP_ZERO;
+		stencilDescRNW2.BackFace.StencilPassOp = D3D11_STENCIL_OP_ZERO;
+		//stencilDescRNW2.BackFace.StencilFunc = (D3D11_COMPARISON_FUNC)2;
+		stencilDescRNW2.BackFace.StencilFunc = D3D11_COMPARISON_NEVER;
+		pDevice->CreateDepthStencilState(&stencilDescRNW2, &myDepthStencilStates[static_cast<int>(eDepthState::READ_NO_WRITE2)]);
+
+		D3D11_DEPTH_STENCIL_DESC stencilDescRNW3;
+		stencilDescRNW3.DepthEnable = true;
+		stencilDescRNW3.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ZERO;
+		stencilDescRNW3.DepthFunc = (D3D11_COMPARISON_FUNC)3;
+		stencilDescRNW3.StencilEnable = false;
+		stencilDescRNW3.StencilReadMask = UINT8(0xFF);
+		stencilDescRNW3.StencilWriteMask = 0x0;
+		stencilDescRNW3.FrontFace.StencilFailOp = D3D11_STENCIL_OP_ZERO;
+		stencilDescRNW3.FrontFace.StencilDepthFailOp = D3D11_STENCIL_OP_ZERO;
+		stencilDescRNW3.FrontFace.StencilPassOp = D3D11_STENCIL_OP_KEEP;
+		stencilDescRNW3.FrontFace.StencilFunc = (D3D11_COMPARISON_FUNC)3;
+		stencilDescRNW3.BackFace.StencilFailOp = D3D11_STENCIL_OP_ZERO;
+		stencilDescRNW3.BackFace.StencilDepthFailOp = D3D11_STENCIL_OP_ZERO;
+		stencilDescRNW3.BackFace.StencilPassOp = D3D11_STENCIL_OP_ZERO;
+		stencilDescRNW3.BackFace.StencilFunc = (D3D11_COMPARISON_FUNC)3;
+		pDevice->CreateDepthStencilState(&stencilDescRNW3, &myDepthStencilStates[static_cast<int>(eDepthState::READ_NO_WRITE3)]);
+
+		D3D11_DEPTH_STENCIL_DESC stencilDescRNW4;
+		stencilDescRNW4.DepthEnable = true;
+		stencilDescRNW4.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ZERO;
+		stencilDescRNW4.DepthFunc = (D3D11_COMPARISON_FUNC)4;
+		stencilDescRNW4.StencilEnable = false;
+		stencilDescRNW4.StencilReadMask = UINT8(0xFF);
+		stencilDescRNW4.StencilWriteMask = 0x0;
+		stencilDescRNW4.FrontFace.StencilFailOp = D3D11_STENCIL_OP_ZERO;
+		stencilDescRNW4.FrontFace.StencilDepthFailOp = D3D11_STENCIL_OP_ZERO;
+		stencilDescRNW4.FrontFace.StencilPassOp = D3D11_STENCIL_OP_KEEP;
+		stencilDescRNW4.FrontFace.StencilFunc = (D3D11_COMPARISON_FUNC)4;
+		stencilDescRNW4.BackFace.StencilFailOp = D3D11_STENCIL_OP_ZERO;
+		stencilDescRNW4.BackFace.StencilDepthFailOp = D3D11_STENCIL_OP_ZERO;
+		stencilDescRNW4.BackFace.StencilPassOp = D3D11_STENCIL_OP_ZERO;
+		stencilDescRNW4.BackFace.StencilFunc = (D3D11_COMPARISON_FUNC)4;
+		pDevice->CreateDepthStencilState(&stencilDescRNW4, &myDepthStencilStates[static_cast<int>(eDepthState::READ_NO_WRITE4)]);
+
+		D3D11_DEPTH_STENCIL_DESC stencilDescRNW5;
+		stencilDescRNW5.DepthEnable = true;
+		stencilDescRNW5.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ZERO;
+		stencilDescRNW5.DepthFunc = (D3D11_COMPARISON_FUNC)5;
+		stencilDescRNW5.StencilEnable = false;
+		stencilDescRNW5.StencilReadMask = UINT8(0xFF);
+		stencilDescRNW5.StencilWriteMask = 0x0;
+		stencilDescRNW5.FrontFace.StencilFailOp = D3D11_STENCIL_OP_ZERO;
+		stencilDescRNW5.FrontFace.StencilDepthFailOp = D3D11_STENCIL_OP_ZERO;
+		stencilDescRNW5.FrontFace.StencilPassOp = D3D11_STENCIL_OP_KEEP;
+		stencilDescRNW5.FrontFace.StencilFunc = (D3D11_COMPARISON_FUNC)5;
+		stencilDescRNW5.BackFace.StencilFailOp = D3D11_STENCIL_OP_ZERO;
+		stencilDescRNW5.BackFace.StencilDepthFailOp = D3D11_STENCIL_OP_ZERO;
+		stencilDescRNW5.BackFace.StencilPassOp = D3D11_STENCIL_OP_ZERO;
+		stencilDescRNW5.BackFace.StencilFunc = (D3D11_COMPARISON_FUNC)5;
+		pDevice->CreateDepthStencilState(&stencilDescRNW5, &myDepthStencilStates[static_cast<int>(eDepthState::READ_NO_WRITE5)]);
+
+		D3D11_DEPTH_STENCIL_DESC stencilDescRNW6;
+		stencilDescRNW6.DepthEnable = true;
+		stencilDescRNW6.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ZERO;
+		stencilDescRNW6.DepthFunc = (D3D11_COMPARISON_FUNC)6;
+		stencilDescRNW6.StencilEnable = false;
+		stencilDescRNW6.StencilReadMask = UINT8(0xFF);
+		stencilDescRNW6.StencilWriteMask = 0x0;
+		stencilDescRNW6.FrontFace.StencilFailOp = D3D11_STENCIL_OP_ZERO;
+		stencilDescRNW6.FrontFace.StencilDepthFailOp = D3D11_STENCIL_OP_ZERO;
+		stencilDescRNW6.FrontFace.StencilPassOp = D3D11_STENCIL_OP_KEEP;
+		stencilDescRNW6.FrontFace.StencilFunc = (D3D11_COMPARISON_FUNC)6;
+		stencilDescRNW6.BackFace.StencilFailOp = D3D11_STENCIL_OP_ZERO;
+		stencilDescRNW6.BackFace.StencilDepthFailOp = D3D11_STENCIL_OP_ZERO;
+		stencilDescRNW6.BackFace.StencilPassOp = D3D11_STENCIL_OP_ZERO;
+		stencilDescRNW6.BackFace.StencilFunc = (D3D11_COMPARISON_FUNC)6;
+		pDevice->CreateDepthStencilState(&stencilDescRNW6, &myDepthStencilStates[static_cast<int>(eDepthState::READ_NO_WRITE6)]);
+
+		D3D11_DEPTH_STENCIL_DESC stencilDescRNW7;
+		stencilDescRNW7.DepthEnable = true;
+		stencilDescRNW7.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ZERO;
+		stencilDescRNW7.DepthFunc = (D3D11_COMPARISON_FUNC)7;
+		stencilDescRNW7.StencilEnable = false;
+		stencilDescRNW7.StencilReadMask = UINT8(0xFF);
+		stencilDescRNW7.StencilWriteMask = 0x0;
+		stencilDescRNW7.FrontFace.StencilFailOp = D3D11_STENCIL_OP_ZERO;
+		stencilDescRNW7.FrontFace.StencilDepthFailOp = D3D11_STENCIL_OP_ZERO;
+		stencilDescRNW7.FrontFace.StencilPassOp = D3D11_STENCIL_OP_KEEP;
+		stencilDescRNW7.FrontFace.StencilFunc = (D3D11_COMPARISON_FUNC)7;
+		stencilDescRNW7.BackFace.StencilFailOp = D3D11_STENCIL_OP_ZERO;
+		stencilDescRNW7.BackFace.StencilDepthFailOp = D3D11_STENCIL_OP_ZERO;
+		stencilDescRNW7.BackFace.StencilPassOp = D3D11_STENCIL_OP_ZERO;
+		stencilDescRNW7.BackFace.StencilFunc = (D3D11_COMPARISON_FUNC)7;
+		pDevice->CreateDepthStencilState(&stencilDescRNW7, &myDepthStencilStates[static_cast<int>(eDepthState::READ_NO_WRITE7)]);
+
+		D3D11_DEPTH_STENCIL_DESC stencilDescRNW8;
+		stencilDescRNW8.DepthEnable = true;
+		stencilDescRNW8.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ZERO;
+		stencilDescRNW8.DepthFunc = (D3D11_COMPARISON_FUNC)8;
+		stencilDescRNW8.StencilEnable = false;
+		stencilDescRNW8.StencilReadMask = UINT8(0xFF);
+		stencilDescRNW8.StencilWriteMask = 0x0;
+		stencilDescRNW8.FrontFace.StencilFailOp = D3D11_STENCIL_OP_ZERO;
+		stencilDescRNW8.FrontFace.StencilDepthFailOp = D3D11_STENCIL_OP_ZERO;
+		stencilDescRNW8.FrontFace.StencilPassOp = D3D11_STENCIL_OP_KEEP;
+		stencilDescRNW8.FrontFace.StencilFunc = (D3D11_COMPARISON_FUNC)8;
+		stencilDescRNW8.BackFace.StencilFailOp = D3D11_STENCIL_OP_ZERO;
+		stencilDescRNW8.BackFace.StencilDepthFailOp = D3D11_STENCIL_OP_ZERO;
+		stencilDescRNW8.BackFace.StencilPassOp = D3D11_STENCIL_OP_ZERO;
+		stencilDescRNW8.BackFace.StencilFunc = (D3D11_COMPARISON_FUNC)8;
+		pDevice->CreateDepthStencilState(&stencilDescRNW8, &myDepthStencilStates[static_cast<int>(eDepthState::READ_NO_WRITE8)]);
 	}
-
-	if (!Visible)
-		return;
-	
-	int value = 0;
-
-	if (GetAsyncKeyState(VK_DOWN) & 1)
-	{
-		Cur_Pos++;
-		if (sOptions[Cur_Pos].Name == 0)
-			Cur_Pos--;
-	}
-
-	if (GetAsyncKeyState(VK_UP) & 1)
-	{
-		Cur_Pos--;
-		if (Cur_Pos == -1)
-			Cur_Pos++;
-	}
-
-	else if (sOptions[Cur_Pos].Type == T_OPTION && GetAsyncKeyState(VK_RIGHT) & 1)
-	{
-		if (sOptions[Cur_Pos].Function == 0)
-			value++;
-	}
-
-	else if (sOptions[Cur_Pos].Type == T_OPTION && (GetAsyncKeyState(VK_LEFT) & 1) && sOptions[Cur_Pos].Function == 1)
-	{
-		value--;
-	}
-
-	else if (sOptions[Cur_Pos].Type == T_ONETWOOPTION && GetAsyncKeyState(VK_RIGHT) & 1 && sOptions[Cur_Pos].Function <= 1)//max
-	{
-		value++;
-	}
-
-	else if (sOptions[Cur_Pos].Type == T_ONETWOOPTION && (GetAsyncKeyState(VK_LEFT) & 1) && sOptions[Cur_Pos].Function != 0)
-	{
-		value--;
-	}
-
-	if (value) {
-		sOptions[Cur_Pos].Function += value;
-		if (sOptions[Cur_Pos].Type == T_FOLDER)
-		{
-			memset(&sOptions, 0, sizeof(sOptions));
-			Items = 0;
-		}
-	}
-	
-}
-
-bool IsReady()
-{
-	if (Items)
-		return true;
-	return false;
-}
-
-void DrawTextF(ID3D11DeviceContext* pContext, LPCWSTR text, int FontSize, int x, int y, DWORD Col)
-{
-	if (Is_Ready == false)
-		MessageBoxA(0, "Error, you dont initialize the menu!", "Error", MB_OK);
-
-	if (pFontWrapper)
-		pFontWrapper->DrawString(pContext, text, (float)FontSize, (float)x, (float)y, Col, FW1_RESTORESTATE);
-}
-
-void Draw_Menu()
-{
-	if (!Visible)
-		return;
-
-	DrawTextF(pContext, sMenu.Title, 14, sMenu.x + 10, sMenu.y, Color_Font);
-	for (int i = 0; i < Items; i++)
-	{
-		if (sOptions[i].Type == T_OPTION)
-		{
-			if (sOptions[i].Function)
-			{
-				DrawTextF(pContext, L"On", 14, sMenu.x + 150, sMenu.y + LineH * (i + 2), Color_On);
-			}
-			else {
-				DrawTextF(pContext, L"Off", 14, sMenu.x + 150, sMenu.y + LineH * (i + 2), Color_Off);
-			}
-		}
-
-		if (sOptions[i].Type == T_ONETWOOPTION)
-		{
-			if (sOptions[i].Function == 0)
-				DrawTextF(pContext, L"Off", 14, sMenu.x + 150, sMenu.y + LineH * (i + 2), Color_Off);
-
-			if (sOptions[i].Function == 1)
-				DrawTextF(pContext, L"Shader Chams", 14, sMenu.x + 150, sMenu.y + LineH * (i + 2), Color_On);
-
-			if (sOptions[i].Function == 2)
-				DrawTextF(pContext, L"Texture Chams", 14, sMenu.x + 150, sMenu.y + LineH * (i + 2), Color_On);
-		}
-
-		if (sOptions[i].Type == T_FOLDER)
-		{
-			if (sOptions[i].Function)
-			{
-				DrawTextF(pContext, L"Open", 14, sMenu.x + 150, sMenu.y + LineH * (i + 2), Color_Folder);
-			}
-			else {
-				DrawTextF(pContext, L"Closed", 14, sMenu.x + 150, sMenu.y + LineH * (i + 2), Color_Folder);
-			}
-		}
-		DWORD Color = Color_Font;
-		if (Cur_Pos == i)
-			Color = Color_Current;
-		DrawTextF(pContext, sOptions[i].Name, 14, sMenu.x + 6, sMenu.y + 1 + LineH * (i + 2), 0xFF2F4F4F);
-		DrawTextF(pContext, sOptions[i].Name, 14, sMenu.x + 5, sMenu.y + LineH * (i + 2), Color);
-
-	}
-}
-
-void Do_Menu()
-{
-	AddOption(L"Wallhack", Item1, &Folder1);
-	AddOneTwoOption(L"Chams", Item2, &Folder1);
 }

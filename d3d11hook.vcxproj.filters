@@ -13,180 +13,63 @@
       <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
       <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
     </Filter>
-    <Filter Include="Resource Files\FW1FontWrapper">
-      <UniqueIdentifier>{7c50d61e-4f3d-43e0-93ea-fd32c1c64471}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="Resource Files\MinHook">
-      <UniqueIdentifier>{bb1ad4ad-90fc-46ab-8339-379f9f7a0308}</UniqueIdentifier>
+    <Filter Include="Resource Files\imgui">
+      <UniqueIdentifier>{8fe55fb0-8906-4f98-90d3-570d93fbf40e}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="main.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="FW1FontWrapper\CFW1ColorRGBA.h">
-      <Filter>Resource Files\FW1FontWrapper</Filter>
+    <ClInclude Include="imgui\imconfig.h">
+      <Filter>Resource Files\imgui</Filter>
     </ClInclude>
-    <ClInclude Include="FW1FontWrapper\CFW1DWriteRenderTarget.h">
-      <Filter>Resource Files\FW1FontWrapper</Filter>
+    <ClInclude Include="imgui\imgui.h">
+      <Filter>Resource Files\imgui</Filter>
     </ClInclude>
-    <ClInclude Include="FW1FontWrapper\CFW1Factory.h">
-      <Filter>Resource Files\FW1FontWrapper</Filter>
+    <ClInclude Include="imgui\imgui_impl_dx11.h">
+      <Filter>Resource Files\imgui</Filter>
     </ClInclude>
-    <ClInclude Include="FW1FontWrapper\CFW1FontWrapper.h">
-      <Filter>Resource Files\FW1FontWrapper</Filter>
+    <ClInclude Include="imgui\imgui_impl_win32.h">
+      <Filter>Resource Files\imgui</Filter>
     </ClInclude>
-    <ClInclude Include="FW1FontWrapper\CFW1GlyphAtlas.h">
-      <Filter>Resource Files\FW1FontWrapper</Filter>
+    <ClInclude Include="imgui\imgui_internal.h">
+      <Filter>Resource Files\imgui</Filter>
     </ClInclude>
-    <ClInclude Include="FW1FontWrapper\CFW1GlyphProvider.h">
-      <Filter>Resource Files\FW1FontWrapper</Filter>
+    <ClInclude Include="imgui\imstb_rectpack.h">
+      <Filter>Resource Files\imgui</Filter>
     </ClInclude>
-    <ClInclude Include="FW1FontWrapper\CFW1GlyphRenderStates.h">
-      <Filter>Resource Files\FW1FontWrapper</Filter>
+    <ClInclude Include="imgui\imstb_textedit.h">
+      <Filter>Resource Files\imgui</Filter>
     </ClInclude>
-    <ClInclude Include="FW1FontWrapper\CFW1GlyphSheet.h">
-      <Filter>Resource Files\FW1FontWrapper</Filter>
+    <ClInclude Include="imgui\imstb_truetype.h">
+      <Filter>Resource Files\imgui</Filter>
     </ClInclude>
-    <ClInclude Include="FW1FontWrapper\CFW1GlyphVertexDrawer.h">
-      <Filter>Resource Files\FW1FontWrapper</Filter>
-    </ClInclude>
-    <ClInclude Include="FW1FontWrapper\CFW1Object.h">
-      <Filter>Resource Files\FW1FontWrapper</Filter>
-    </ClInclude>
-    <ClInclude Include="FW1FontWrapper\CFW1StateSaver.h">
-      <Filter>Resource Files\FW1FontWrapper</Filter>
-    </ClInclude>
-    <ClInclude Include="FW1FontWrapper\CFW1TextGeometry.h">
-      <Filter>Resource Files\FW1FontWrapper</Filter>
-    </ClInclude>
-    <ClInclude Include="FW1FontWrapper\CFW1TextRenderer.h">
-      <Filter>Resource Files\FW1FontWrapper</Filter>
-    </ClInclude>
-    <ClInclude Include="FW1FontWrapper\FW1CompileSettings.h">
-      <Filter>Resource Files\FW1FontWrapper</Filter>
-    </ClInclude>
-    <ClInclude Include="FW1FontWrapper\FW1FontWrapper.h">
-      <Filter>Resource Files\FW1FontWrapper</Filter>
-    </ClInclude>
-    <ClInclude Include="FW1FontWrapper\FW1Precompiled.h">
-      <Filter>Resource Files\FW1FontWrapper</Filter>
-    </ClInclude>
-    <ClInclude Include="MinHook\src\buffer.h">
-      <Filter>Resource Files\MinHook</Filter>
-    </ClInclude>
-    <ClInclude Include="MinHook\src\trampoline.h">
-      <Filter>Resource Files\MinHook</Filter>
-    </ClInclude>
-    <ClInclude Include="MinHook\src\hde\hde32.h">
-      <Filter>Resource Files\MinHook</Filter>
-    </ClInclude>
-    <ClInclude Include="MinHook\src\hde\hde64.h">
-      <Filter>Resource Files\MinHook</Filter>
-    </ClInclude>
-    <ClInclude Include="MinHook\src\hde\pstdint.h">
-      <Filter>Resource Files\MinHook</Filter>
-    </ClInclude>
-    <ClInclude Include="MinHook\src\hde\table32.h">
-      <Filter>Resource Files\MinHook</Filter>
-    </ClInclude>
-    <ClInclude Include="MinHook\src\hde\table64.h">
-      <Filter>Resource Files\MinHook</Filter>
+    <ClInclude Include="detours.h">
+      <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="universal.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="FW1FontWrapper\CFW1ColorRGBA.cpp">
-      <Filter>Resource Files\FW1FontWrapper</Filter>
+    <ClCompile Include="imgui\imgui.cpp">
+      <Filter>Resource Files\imgui</Filter>
     </ClCompile>
-    <ClCompile Include="FW1FontWrapper\CFW1ColorRGBAInterface.cpp">
-      <Filter>Resource Files\FW1FontWrapper</Filter>
+    <ClCompile Include="imgui\imgui_demo.cpp">
+      <Filter>Resource Files\imgui</Filter>
     </ClCompile>
-    <ClCompile Include="FW1FontWrapper\CFW1DWriteRenderTarget.cpp">
-      <Filter>Resource Files\FW1FontWrapper</Filter>
+    <ClCompile Include="imgui\imgui_draw.cpp">
+      <Filter>Resource Files\imgui</Filter>
     </ClCompile>
-    <ClCompile Include="FW1FontWrapper\CFW1DWriteRenderTargetInterface.cpp">
-      <Filter>Resource Files\FW1FontWrapper</Filter>
+    <ClCompile Include="imgui\imgui_impl_dx11.cpp">
+      <Filter>Resource Files\imgui</Filter>
     </ClCompile>
-    <ClCompile Include="FW1FontWrapper\CFW1Factory.cpp">
-      <Filter>Resource Files\FW1FontWrapper</Filter>
+    <ClCompile Include="imgui\imgui_impl_win32.cpp">
+      <Filter>Resource Files\imgui</Filter>
     </ClCompile>
-    <ClCompile Include="FW1FontWrapper\CFW1FactoryInterface.cpp">
-      <Filter>Resource Files\FW1FontWrapper</Filter>
-    </ClCompile>
-    <ClCompile Include="FW1FontWrapper\CFW1FontWrapper.cpp">
-      <Filter>Resource Files\FW1FontWrapper</Filter>
-    </ClCompile>
-    <ClCompile Include="FW1FontWrapper\CFW1FontWrapperInterface.cpp">
-      <Filter>Resource Files\FW1FontWrapper</Filter>
-    </ClCompile>
-    <ClCompile Include="FW1FontWrapper\CFW1GlyphAtlas.cpp">
-      <Filter>Resource Files\FW1FontWrapper</Filter>
-    </ClCompile>
-    <ClCompile Include="FW1FontWrapper\CFW1GlyphAtlasInterface.cpp">
-      <Filter>Resource Files\FW1FontWrapper</Filter>
-    </ClCompile>
-    <ClCompile Include="FW1FontWrapper\CFW1GlyphProvider.cpp">
-      <Filter>Resource Files\FW1FontWrapper</Filter>
-    </ClCompile>
-    <ClCompile Include="FW1FontWrapper\CFW1GlyphProviderInterface.cpp">
-      <Filter>Resource Files\FW1FontWrapper</Filter>
-    </ClCompile>
-    <ClCompile Include="FW1FontWrapper\CFW1GlyphRenderStates.cpp">
-      <Filter>Resource Files\FW1FontWrapper</Filter>
-    </ClCompile>
-    <ClCompile Include="FW1FontWrapper\CFW1GlyphRenderStatesInterface.cpp">
-      <Filter>Resource Files\FW1FontWrapper</Filter>
-    </ClCompile>
-    <ClCompile Include="FW1FontWrapper\CFW1GlyphSheet.cpp">
-      <Filter>Resource Files\FW1FontWrapper</Filter>
-    </ClCompile>
-    <ClCompile Include="FW1FontWrapper\CFW1GlyphSheetInterface.cpp">
-      <Filter>Resource Files\FW1FontWrapper</Filter>
-    </ClCompile>
-    <ClCompile Include="FW1FontWrapper\CFW1GlyphVertexDrawer.cpp">
-      <Filter>Resource Files\FW1FontWrapper</Filter>
-    </ClCompile>
-    <ClCompile Include="FW1FontWrapper\CFW1GlyphVertexDrawerInterface.cpp">
-      <Filter>Resource Files\FW1FontWrapper</Filter>
-    </ClCompile>
-    <ClCompile Include="FW1FontWrapper\CFW1StateSaver.cpp">
-      <Filter>Resource Files\FW1FontWrapper</Filter>
-    </ClCompile>
-    <ClCompile Include="FW1FontWrapper\CFW1TextGeometry.cpp">
-      <Filter>Resource Files\FW1FontWrapper</Filter>
-    </ClCompile>
-    <ClCompile Include="FW1FontWrapper\CFW1TextGeometryInterface.cpp">
-      <Filter>Resource Files\FW1FontWrapper</Filter>
-    </ClCompile>
-    <ClCompile Include="FW1FontWrapper\CFW1TextRenderer.cpp">
-      <Filter>Resource Files\FW1FontWrapper</Filter>
-    </ClCompile>
-    <ClCompile Include="FW1FontWrapper\CFW1TextRendererInterface.cpp">
-      <Filter>Resource Files\FW1FontWrapper</Filter>
-    </ClCompile>
-    <ClCompile Include="FW1FontWrapper\FW1FontWrapper.cpp">
-      <Filter>Resource Files\FW1FontWrapper</Filter>
-    </ClCompile>
-    <ClCompile Include="FW1FontWrapper\FW1Precompiled.cpp">
-      <Filter>Resource Files\FW1FontWrapper</Filter>
-    </ClCompile>
-    <ClCompile Include="MinHook\src\buffer.c">
-      <Filter>Resource Files\MinHook</Filter>
-    </ClCompile>
-    <ClCompile Include="MinHook\src\hook.c">
-      <Filter>Resource Files\MinHook</Filter>
-    </ClCompile>
-    <ClCompile Include="MinHook\src\trampoline.c">
-      <Filter>Resource Files\MinHook</Filter>
-    </ClCompile>
-    <ClCompile Include="MinHook\src\hde\hde32.c">
-      <Filter>Resource Files\MinHook</Filter>
-    </ClCompile>
-    <ClCompile Include="MinHook\src\hde\hde64.c">
-      <Filter>Resource Files\MinHook</Filter>
+    <ClCompile Include="imgui\imgui_widgets.cpp">
+      <Filter>Resource Files\imgui</Filter>
     </ClCompile>
   </ItemGroup>
 </Project>
