@@ -344,6 +344,8 @@ HRESULT __stdcall hookD3D11Present(IDXGISwapChain* pSwapChain, UINT SyncInterval
 		ImGui::SliderInt("find Stride", &countStride, -1, 100);
 		ImGui::SliderInt("find IndexCount", &countIndexCount, -1, 100);
 		ImGui::SliderInt("find ReturnAddress", &g_Index, -1, 10);
+		//if(countnum > 0)
+		ImGui::SliderInt("countnum", &countnum, -1, 100);
 		if (g_Index != g_Vector.size() - 1)
 		g_SelectedAddress = g_Vector[g_Index];
 		ImGui::Text("Press END to log highlated textures");
@@ -369,7 +371,7 @@ HRESULT __stdcall hookD3D11Present(IDXGISwapChain* pSwapChain, UINT SyncInterval
 		old_Rvalue = countRdepth;
 	}
 
-	//in case WndProc is too slow or dead
+	//in case WndProc is slow or non-functional
 	if (ShowAltMenu)
 	{
 		ImGui::SetNextWindowPos(ImVec2(50.0f, 400.0f));
@@ -440,10 +442,13 @@ void __stdcall hookD3D11DrawIndexed(ID3D11DeviceContext* pContext, UINT IndexCou
 
 	//wallhack/chams
 	if(Wallhack||ShaderChams||TextureChams) //if wallhack/chams option is enabled in menu
-	if((countStride == Stride || countIndexCount == IndexCount / 400)|| (ReturnAddress != NULL && g_SelectedAddress != NULL && ReturnAddress == g_SelectedAddress))
+	//
+	//___________________________________________________________________________________
 	//Model recognition goes here, see your log.txt for the right Stride etc. You may have to do trial and error to see which values work best
-	//if(Stride == ..)
-	//if (ReturnAddress != NULL && g_SelectedAddress != NULL && ReturnAddress == g_SelectedAddress)
+	if ((countnum == pssrStartSlot) || //optional: set countnum to something you want to test or log (pssrStartSlot for example) and use keys 0 and 9 to increase/decrease values
+	(countStride == Stride || countIndexCount == IndexCount / 400) || (ReturnAddress != NULL && g_SelectedAddress != NULL && ReturnAddress == g_SelectedAddress))
+	//___________________________________________________________________________________
+	//
 	//ut4 models
 	//if ((Stride == 32 && IndexCount == 10155)||(Stride == 44 && IndexCount == 11097)||(Stride == 40 && IndexCount == 11412)||(Stride == 40 && IndexCount == 11487)||(Stride == 44 && IndexCount == 83262)||(Stride == 40 && IndexCount == 23283))
 	//qc models
@@ -523,7 +528,8 @@ void __stdcall hookD3D11DrawIndexed(ID3D11DeviceContext* pContext, UINT IndexCou
 	//small bruteforce logger
 	if (ShowMenu)
 	{
-		if ((countStride == Stride || countIndexCount == IndexCount / 400) || (ReturnAddress != NULL && g_SelectedAddress != NULL && ReturnAddress == g_SelectedAddress))
+		if((countnum == pssrStartSlot)|| //optional: set countnum to something you want to test or log (pssrStartSlot for example) and use keys 0 and 9 to increase/decrease values
+		(countStride == Stride || countIndexCount == IndexCount / 400) || (ReturnAddress != NULL && g_SelectedAddress != NULL && ReturnAddress == g_SelectedAddress))
 			if (GetAsyncKeyState(VK_END) & 1)
 				Log("Stride == %d && IndexCount == %d && indesc.ByteWidth == %d && vedesc.ByteWidth == %d && pscdesc.ByteWidth == %d && vscdesc.ByteWidth == %d && pssrStartSlot == %d && vscStartSlot == %d && countEdepth == %d && countRdepth == %d && ReturnAddress == 0x%X",
 					Stride, IndexCount, indesc.ByteWidth, vedesc.ByteWidth, pscdesc.ByteWidth, vscdesc.ByteWidth, pssrStartSlot, vscStartSlot, countEdepth, countRdepth, ReturnAddress); //Descr.Format, Descr.Buffer.NumElements, texdesc.Format, texdesc.Height, texdesc.Width 
@@ -544,6 +550,12 @@ void __stdcall hookD3D11PSSetShaderResources(ID3D11DeviceContext* pContext, UINT
 	//reset settings
 	if (ShowMenu)
 	{
+		//increase/decrease countnum
+		if (GetAsyncKeyState(0x39) & 1) //9-
+			countnum--;
+		if (GetAsyncKeyState(0x30) & 1) //0+
+			countnum++;
+
 		if (GetAsyncKeyState(VK_F10) & 1)
 		{
 			Wallhack = 0;
@@ -551,11 +563,12 @@ void __stdcall hookD3D11PSSetShaderResources(ID3D11DeviceContext* pContext, UINT
 			TextureChams = 0;
 			countStride = -1;
 			countIndexCount = -1;
+			countnum = -1;
 			g_Index = -1;
 		}
 	}
 
-	//make modelrec finder still available if WndProc is slow or died
+	//make modelrec finder still usable if WndProc is slow or non-functional
 	if (GetAsyncKeyState(VK_DELETE) & 1)
 	{
 		SaveCfg();
@@ -563,7 +576,7 @@ void __stdcall hookD3D11PSSetShaderResources(ID3D11DeviceContext* pContext, UINT
 		ShowMenu = !ShowMenu;
 	}
 
-	if (ShowAltMenu) //these keys only avalable if WndProc died
+	if (ShowAltMenu) //keys if WndProc slow or non-functional
 	{
 		//alt + f1 to toggle wallhack
 		if (GetAsyncKeyState(VK_MENU) && GetAsyncKeyState(VK_F1) & 1)
