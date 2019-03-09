@@ -256,7 +256,11 @@ HRESULT __stdcall hookD3D11Present(IDXGISwapChain* pSwapChain, UINT SyncInterval
 	}
 
 	//create depthstencil states
-	CreateDepthStencilStates();
+	if (createdepthstencil)
+	{
+		createdepthstencil = false; //once
+		CreateDepthStencilStates();
+	}
 
 	//create rendertarget
 	if (RenderTargetView == NULL)
