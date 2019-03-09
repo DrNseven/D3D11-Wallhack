@@ -14,3 +14,5 @@ Credits: dracorx, evolution536, test4321, Momo5000
 
 Menu key = INSERT
 ![alt tag](https://github.com/DrNseven/D3D11-Wallhack/blob/master/d3d11wallhack.jpg)
+
+Here is the old version with FW1FontWrapper and MinHook: https://github.com/DrNseven/D3D11-Wallhack/tree/acc8e259e813da2e9d7ad6a39f6fcefaf1de1800
