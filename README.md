@@ -12,5 +12,5 @@ D3D11 Hook Wallhack x86/x64
 
 Credits: dracorx, evolution536, test4321, Momo5000
 
-Menu key = insert, ALT + L = options
-![alt tag](https://github.com/DrNseven/D3D11-Wallhack/blob/master/keyboard.jpg)
+Menu key = INSERT
+![alt tag](https://github.com/DrNseven/D3D11-Wallhack/blob/master/d3d11wallhack.jpg)
