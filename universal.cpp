@@ -43,7 +43,7 @@ D3D11DrawIndexedHook phookD3D11DrawIndexed = NULL;
 D3D11DrawIndexedInstancedHook phookD3D11DrawIndexedInstanced = NULL;
 D3D11CreateQueryHook phookD3D11CreateQuery = NULL;
 
-
+IDXGISwapChain* SwapChain;
 ID3D11Device *pDevice = NULL;
 ID3D11DeviceContext *pContext = NULL;
 
@@ -65,7 +65,23 @@ LRESULT CALLBACK hWndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 	ScreenToClient(window, &mPos);
 	ImGui::GetIO().MousePos.x = mPos.x;
 	ImGui::GetIO().MousePos.y = mPos.y;
+	
+	/*
+	if (uMsg == WM_SIZE)
+	{
+		if (wParam == SIZE_MINIMIZED)
+		ShowMenu = false;
 
+		if (wParam != SIZE_MINIMIZED)
+		{
+			ImGui_ImplDX11_InvalidateDeviceObjects();
+			CleanupRenderTarget();
+			SwapChain->ResizeBuffers(0, (UINT)LOWORD(lParam), (UINT)HIWORD(lParam), DXGI_FORMAT_UNKNOWN, 0);
+			CreateRenderTarget();
+			ImGui_ImplDX11_CreateDeviceObjects();
+		}
+	}
+	*/
 
 	if (uMsg == WM_KEYUP)
 	{
@@ -92,12 +108,18 @@ LRESULT CALLBACK hWndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 }
 
 //==========================================================================================================================
-
+static bool imGuiInitializing = false;
 HRESULT __stdcall hookD3D11ResizeBuffers(IDXGISwapChain *pSwapChain, UINT BufferCount, UINT Width, UINT Height, DXGI_FORMAT NewFormat, UINT SwapChainFlags)
 {
-	if (RenderTargetView != NULL) { RenderTargetView->Release(); RenderTargetView = NULL; }
-
-	return phookD3D11ResizeBuffers(pSwapChain, BufferCount, Width, Height, NewFormat, SwapChainFlags);
+	imGuiInitializing = true;
+	ImGui_ImplDX11_InvalidateDeviceObjects();
+	CleanupRenderTarget();
+	HRESULT toReturn = phookD3D11ResizeBuffers(pSwapChain, BufferCount, Width, Height, NewFormat, SwapChainFlags);
+	//CreateRenderTarget();
+	ImGui_ImplDX11_CreateDeviceObjects();
+	imGuiInitializing = false;
+	
+	return toReturn;
 }
 
 //==========================================================================================================================
@@ -111,10 +133,11 @@ HRESULT __stdcall hookD3D11Present(IDXGISwapChain* pSwapChain, UINT SyncInterval
 		//get device
 		if (SUCCEEDED(pSwapChain->GetDevice(__uuidof(ID3D11Device), (void **)&pDevice)))
 		{
+			SwapChain = pSwapChain;
 			pSwapChain->GetDevice(__uuidof(pDevice), (void**)&pDevice);
 			pDevice->GetImmediateContext(&pContext);
 		}
-
+		
 		//imgui
 		DXGI_SWAP_CHAIN_DESC sd;
 		pSwapChain->GetDesc(&sd);
@@ -129,7 +152,7 @@ HRESULT __stdcall hookD3D11Present(IDXGISwapChain* pSwapChain, UINT SyncInterval
 		ImGui_ImplWin32_Init(window);
 		ImGui_ImplDX11_Init(pDevice, pContext);
 		ImGui::GetIO().ImeWindowHandle = window;
-
+		
 		//create wallhacked rasterizer
 		D3D11_RASTERIZER_DESC rasterizer_desc;
 		ZeroMemory(&rasterizer_desc, sizeof(rasterizer_desc));
@@ -255,13 +278,6 @@ HRESULT __stdcall hookD3D11Present(IDXGISwapChain* pSwapChain, UINT SyncInterval
 		LoadCfg();
 	}
 
-	//create depthstencil states
-	if (createdepthstencil)
-	{
-		createdepthstencil = false; //once
-		CreateDepthStencilStates();
-	}
-
 	//create rendertarget
 	if (RenderTargetView == NULL)
 	{
@@ -275,12 +291,10 @@ HRESULT __stdcall hookD3D11Present(IDXGISwapChain* pSwapChain, UINT SyncInterval
 		hr = pSwapChain->GetBuffer(0, __uuidof(ID3D11Texture2D), (LPVOID*)&backbuffer);
 		if (FAILED(hr)) {
 			Log("Failed to get BackBuffer");
-			pContext->OMGetRenderTargets(1, &RenderTargetView, NULL);
-			pContext->OMSetRenderTargets(1, &RenderTargetView, NULL);
 			return hr;
 		}
 
-		//create rendertarget
+		//create rendertargetview
 		hr = pDevice->CreateRenderTargetView(backbuffer, NULL, &RenderTargetView);
 		backbuffer->Release();
 		if (FAILED(hr)) {
@@ -290,6 +304,18 @@ HRESULT __stdcall hookD3D11Present(IDXGISwapChain* pSwapChain, UINT SyncInterval
 	}
 	else //call before you draw
 		pContext->OMSetRenderTargets(1, &RenderTargetView, NULL);
+		
+	//create rendertarget & init imgui
+	//if (!(Flags & DXGI_PRESENT_TEST) && !imGuiInitializing)
+	//{
+	//}
+
+	//create depthstencil states
+	if (createdepthstencil)
+	{
+		createdepthstencil = false; //once
+		CreateDepthStencilStates();
+	}
 
 	//create shaders
 	if (!psRed)
@@ -297,7 +323,6 @@ HRESULT __stdcall hookD3D11Present(IDXGISwapChain* pSwapChain, UINT SyncInterval
 
 	if (!psGreen)
 		GenerateShader(pDevice, &psGreen, 0.0f, 1.0f, 0.0f);
-
 
 	//imgui
 	ImGui_ImplWin32_NewFrame();
@@ -327,7 +352,8 @@ HRESULT __stdcall hookD3D11Present(IDXGISwapChain* pSwapChain, UINT SyncInterval
 	//menu
 	if (ShowMenu)
 	{
-		//ImVec4 col = ImColor(0.0f, 1.0f, 0.58f, 0.5f);
+		//ImGui::SetNextWindowPos(ImVec2(50.0f, 400.0f)); //pos
+		ImGui::SetNextWindowSize(ImVec2(410.0f, 450.0f)); //size
 		ImVec4 Bgcol = ImColor(0.0f, 0.4f, 0.28f, 0.8f); //bg color
 		ImGui::PushStyleColor(ImGuiCol_WindowBg, Bgcol);
 		ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0.2f, 0.2f, 0.2f, 0.8f)); //frame color
@@ -338,62 +364,57 @@ HRESULT __stdcall hookD3D11Present(IDXGISwapChain* pSwapChain, UINT SyncInterval
 		ImGui::Checkbox("Texture Chams", &TextureChams);
 		ImGui::SliderInt("EDepth", &countEdepth, 0, 20);
 		ImGui::SliderInt("RDepth", &countRdepth, 0, 20);
-		ImGui::End();
+		ImGui::Checkbox("Modelrec Finder", &ModelrecFinder);
 
-		ImGui::Begin("Modelrec Finder");
-		ImGui::SliderInt("find Stride", &countStride, -1, 100);
-		ImGui::SliderInt("find IndexCount", &countIndexCount, -1, 100);
-		ImGui::SliderInt("find ReturnAddress", &g_Index, -1, 10);
-		//if(countnum > 0)
-		ImGui::SliderInt("countnum", &countnum, -1, 100);
-		if (g_Index != g_Vector.size() - 1)
-		g_SelectedAddress = g_Vector[g_Index];
-		ImGui::Text("Press END to log highlated textures");
-		ImGui::Text("Press F9 to log draw functions");
-		ImGui::Text("Press F10 to reset settings");
-		ImGui::End();
-
-		//need to recreate depthstencil if bruteforce Depth
-		static int old_Evalue = countEdepth;
-		if (countEdepth != old_Evalue)
+		if (ModelrecFinder)
 		{
-			//Log("countEdepth is different than previous call");
-			createdepthstencil = true; //reload
+			if (g_Index != g_Vector.size() - 1)
+				g_SelectedAddress = g_Vector[g_Index];
+
+			if (!IsAddressPresent(ReturnAddress))
+				g_Vector.push_back(ReturnAddress);
+
+			ImGui::SliderInt("find Stride", &countStride, -1, 100);
+			ImGui::SliderInt("find IndexCount", &countIndexCount, -1, 100);
+			ImGui::SliderInt("find RetAddr", &g_Index, -1, 10);
+			ImGui::SliderInt("countnum", &countnum, -1, 100);
+
+			ImGui::Text("Use Keys: (ALT + F1) to toggle Wallhack");
+			ImGui::Text("Use Keys: (ALT + F2) to toggle Shader Chams");
+			ImGui::Text("Use Keys: (ALT + F3) to toggle Texture Chams");
+			ImGui::Text("Use Keys (5/6) to find eDepthState");
+			ImGui::Text("Use Keys (7/8) to find rDepthState");
+			ImGui::Text("Use Keys (0/0) to find countnum");
+			ImGui::Text("Press Home to toggle ModelRec finder");
+
+			ImGui::Text("Use Keys (Page Up/Down) to find Stride");
+			ImGui::Text("Press END to log highlated textures");
+			ImGui::Text("Press F9 to log draw functions");
+			ImGui::Text("Press F10 to reset settings");
+
+			//need to recreate depthstencil if bruteforce Depth
+			static int old_Evalue = countEdepth;
+			if (countEdepth != old_Evalue)
+			{
+				//Log("countEdepth is different than previous call");
+				createdepthstencil = true; //reload
+			}
+			old_Evalue = countEdepth;
+
+			static int old_Rvalue = countRdepth;
+			if (countRdepth != old_Rvalue)
+			{
+				//Log("countRdepth is different than previous call");
+				createdepthstencil = true; //reload
+			}
+			old_Rvalue = countRdepth;
 		}
-		old_Evalue = countEdepth;
-
-		static int old_Rvalue = countRdepth;
-		if (countRdepth != old_Rvalue)
-		{
-			//Log("countRdepth is different than previous call");
-			createdepthstencil = true; //reload
-		}
-		old_Rvalue = countRdepth;
-	}
-
-	//in case WndProc is slow or non-functional
-	if (ShowAltMenu)
-	{
-		ImGui::SetNextWindowPos(ImVec2(50.0f, 400.0f));
-		ImVec4 Bgcol = ImColor(0.0f, 0.4f, 0.28f, 0.8f);
-		ImGui::PushStyleColor(ImGuiCol_WindowBg, Bgcol);
-		ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0.2f, 0.2f, 0.2f, 0.8f));
-
-		ImGui::Begin("If WndProc is dead: mouse menu is not available");
-		ImGui::Text("Use Keys: (ALT + F1) to toggle Wallhack");
-		ImGui::Text("Use Keys: (ALT + F2) to toggle Shader Chams");
-		ImGui::Text("Use Keys: (ALT + F3) to toggle Texture Chams");
-		ImGui::Text("Use Keys (Page Up/Down) to find Stride");
-		ImGui::Text("Use Keys (7/8) to find eDepthState");
-		ImGui::Text("Use Keys (9/0) to find rDepthState");
-		ImGui::Text("Use Keys (END) to Log highlated textures");
 		ImGui::End();
 	}
 
 	ImGui::EndFrame();
 	ImGui::Render();
 	ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
-
 
 	return phookD3D11Present(pSwapChain, SyncInterval, Flags);
 }
@@ -533,9 +554,6 @@ void __stdcall hookD3D11DrawIndexed(ID3D11DeviceContext* pContext, UINT IndexCou
 			if (GetAsyncKeyState(VK_END) & 1)
 				Log("Stride == %d && IndexCount == %d && indesc.ByteWidth == %d && vedesc.ByteWidth == %d && pscdesc.ByteWidth == %d && vscdesc.ByteWidth == %d && pssrStartSlot == %d && vscStartSlot == %d && countEdepth == %d && countRdepth == %d && ReturnAddress == 0x%X",
 					Stride, IndexCount, indesc.ByteWidth, vedesc.ByteWidth, pscdesc.ByteWidth, vscdesc.ByteWidth, pssrStartSlot, vscStartSlot, countEdepth, countRdepth, ReturnAddress); //Descr.Format, Descr.Buffer.NumElements, texdesc.Format, texdesc.Height, texdesc.Width 
-
-		if (!IsAddressPresent(ReturnAddress))
-			g_Vector.push_back(ReturnAddress);
 	}
 
 	return phookD3D11DrawIndexed(pContext, IndexCount, StartIndexLocation, BaseVertexLocation);
@@ -550,34 +568,6 @@ void __stdcall hookD3D11PSSetShaderResources(ID3D11DeviceContext* pContext, UINT
 	//reset settings
 	if (ShowMenu)
 	{
-		//increase/decrease countnum
-		if (GetAsyncKeyState(0x39) & 1) //9-
-			countnum--;
-		if (GetAsyncKeyState(0x30) & 1) //0+
-			countnum++;
-
-		if (GetAsyncKeyState(VK_F10) & 1)
-		{
-			Wallhack = 0;
-			ShaderChams = 0;
-			TextureChams = 0;
-			countStride = -1;
-			countIndexCount = -1;
-			countnum = -1;
-			g_Index = -1;
-		}
-	}
-
-	//make modelrec finder still usable if WndProc is slow or non-functional
-	if (GetAsyncKeyState(VK_DELETE) & 1)
-	{
-		SaveCfg();
-		ShowAltMenu = !ShowAltMenu;
-		ShowMenu = !ShowMenu;
-	}
-
-	if (ShowAltMenu) //keys if WndProc slow or non-functional
-	{
 		//alt + f1 to toggle wallhack
 		if (GetAsyncKeyState(VK_MENU) && GetAsyncKeyState(VK_F1) & 1)
 			Wallhack = !Wallhack;
@@ -587,7 +577,10 @@ void __stdcall hookD3D11PSSetShaderResources(ID3D11DeviceContext* pContext, UINT
 
 		if (GetAsyncKeyState(VK_MENU) && GetAsyncKeyState(VK_F3) & 1)
 			TextureChams = !TextureChams;
-		
+
+		if (GetAsyncKeyState(VK_HOME) & 1) //home/pos1
+			ModelrecFinder = !ModelrecFinder;
+
 		//hold down 6 key until a texture is wallhacked
 		if (GetAsyncKeyState(VK_NEXT) & 1) //page down
 			countStride--;
@@ -595,30 +588,63 @@ void __stdcall hookD3D11PSSetShaderResources(ID3D11DeviceContext* pContext, UINT
 			countStride++;
 
 		//find SetDepthStencilState value (in front of walls)
-		if (GetAsyncKeyState(0x37) & 1) //7-
+		if (GetAsyncKeyState(0x35) & 1) //5-
 		{
 			countEdepth--;
 			createdepthstencil = true;
 		}
-		if (GetAsyncKeyState(0x38) & 1) //8+
+		if (GetAsyncKeyState(0x36) & 1) //6+
 		{
 			countEdepth++;
 			createdepthstencil = true;
 		}
 
 		//find SetDepthStencilState value (behind walls)
-		if (GetAsyncKeyState(0x39) & 1) //9-
+		if (GetAsyncKeyState(0x37) & 1) //7-
 		{
 			countRdepth--;
 			createdepthstencil = true;
 		}
 
-		if (GetAsyncKeyState(0x30) & 1) //0+
+		if (GetAsyncKeyState(0x38) & 1) //8+
 		{
 			countRdepth++;
 			createdepthstencil = true;
 		}
+
+		//increase/decrease countnum
+		if (GetAsyncKeyState(0x39) & 1) //9-
+			countnum--;
+		
+		if (GetAsyncKeyState(0x30) & 1) //0+
+			countnum++;
+
+		if (GetAsyncKeyState(VK_F10) & 1)
+		{
+			Wallhack = 0;
+			ShaderChams = 0;
+			TextureChams = 0;
+			ModelrecFinder = 0;
+			countStride = -1;
+			countIndexCount = -1;
+			countnum = -1;
+			g_Index = -1;
+		}
 	}
+
+	//make menu still usable if WndProc is slow or non-functional
+	if (GetAsyncKeyState(VK_DELETE) & 1)
+	{
+		SaveCfg();
+		ShowMenu = !ShowMenu;
+	}
+
+	//on alt tab
+	if (GetAsyncKeyState(VK_MENU) && GetAsyncKeyState(VK_TAB) & 1)
+		ShowMenu = false;
+	if (GetAsyncKeyState(VK_TAB) && GetAsyncKeyState(VK_MENU) & 1)
+		ShowMenu = false;
+
 
 	/*
 	//texture stuff (usually not needed)

@@ -6,6 +6,7 @@
 bool Wallhack=true;
 bool ShaderChams = false;
 bool TextureChams = false;
+bool ModelrecFinder = true;
 
 //init only once
 bool firstTime = true; 
@@ -74,7 +75,6 @@ void* ReturnAddress;
 //wndproc
 HWND window = nullptr;
 bool ShowMenu = false;
-bool ShowAltMenu = false;
 static WNDPROC OriginalWndProcHandler = nullptr;
 
 //logger, misc
@@ -233,6 +233,7 @@ ID3D11RasterizerState* rSOLIDState;
 
 #include <string>
 #include <fstream>
+//save cfg
 void SaveCfg()
 {
 	ofstream fout;
@@ -242,9 +243,11 @@ void SaveCfg()
 	fout << "TextureChams " << TextureChams << endl;
 	fout << "EDepth " << countEdepth << endl;
 	fout << "RDepth " << countRdepth << endl;
+	fout << "ModelrecFinder " << ModelrecFinder << endl;
 	fout.close();
 }
 
+//load cfg
 void LoadCfg()
 {
 	ifstream fin;
@@ -255,12 +258,40 @@ void LoadCfg()
 	fin >> Word >> TextureChams;
 	fin >> Word >> EDepth;
 	fin >> Word >> RDepth;
+	fin >> Word >> ModelrecFinder;
 	fin.close();
 }
 
+//create rendertarget
+void CreateRenderTarget()
+{
+	DXGI_SWAP_CHAIN_DESC sd;
+	SwapChain->GetDesc(&sd);
+	ID3D11Texture2D* pBackBuffer;
+	D3D11_RENDER_TARGET_VIEW_DESC render_target_view_desc;
+	ZeroMemory(&render_target_view_desc, sizeof(render_target_view_desc));
+	render_target_view_desc.Format = sd.BufferDesc.Format;
+	render_target_view_desc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2D;
+	hr = SwapChain->GetBuffer(0, __uuidof(ID3D11Texture2D), (LPVOID*)&pBackBuffer);
+	if (FAILED(hr)) { Log("Failed to get BackBuffer"); }
+	hr = pDevice->CreateRenderTargetView(pBackBuffer, &render_target_view_desc, &RenderTargetView);
+	pBackBuffer->Release();
+	if (FAILED(hr)) { Log("Failed to get RenderTarget"); }
+}
+
+//cleanup rendertarget
+void CleanupRenderTarget()
+{
+	if (nullptr != RenderTargetView)
+	{
+		RenderTargetView->Release();
+		RenderTargetView = nullptr;
+	}
+}
+
+//create depthstencil states
 void CreateDepthStencilStates()
 {
-	//create depthstencilstate
 	D3D11_DEPTH_STENCIL_DESC  stencilDesc;
 	stencilDesc.DepthFunc = D3D11_COMPARISON_LESS;
 	stencilDesc.StencilEnable = true;
