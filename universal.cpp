@@ -87,9 +87,6 @@ LRESULT CALLBACK hWndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 	{
 		if (wParam == VK_INSERT)
 		{
-			SaveCfg(); //save settings
-			ShowMenu = !ShowMenu;
-
 			if(ShowMenu)
 				io.MouseDrawCursor = true;
 			else
@@ -633,7 +630,7 @@ void __stdcall hookD3D11PSSetShaderResources(ID3D11DeviceContext* pContext, UINT
 	}
 
 	//make menu still usable if WndProc is slow or non-functional
-	if (GetAsyncKeyState(VK_DELETE) & 1)
+	if (GetAsyncKeyState(VK_INSERT) & 1)
 	{
 		SaveCfg();
 		ShowMenu = !ShowMenu;
