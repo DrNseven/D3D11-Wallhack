@@ -1,9 +1,7 @@
 //D3D11 wallhack by n7
-//compile in release mode, not debug
 
 #include <Windows.h>
 #include <intrin.h>
-#include <vector>
 #include <d3d11.h>
 #include <D3Dcompiler.h>
 #pragma comment(lib, "D3dcompiler.lib")
@@ -43,7 +41,6 @@ D3D11DrawIndexedHook phookD3D11DrawIndexed = NULL;
 D3D11DrawIndexedInstancedHook phookD3D11DrawIndexedInstanced = NULL;
 D3D11CreateQueryHook phookD3D11CreateQuery = NULL;
 
-IDXGISwapChain* SwapChain;
 ID3D11Device *pDevice = NULL;
 ID3D11DeviceContext *pContext = NULL;
 
@@ -65,23 +62,6 @@ LRESULT CALLBACK hWndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 	ScreenToClient(window, &mPos);
 	ImGui::GetIO().MousePos.x = mPos.x;
 	ImGui::GetIO().MousePos.y = mPos.y;
-	
-	/*
-	if (uMsg == WM_SIZE)
-	{
-		if (wParam == SIZE_MINIMIZED)
-		ShowMenu = false;
-
-		if (wParam != SIZE_MINIMIZED)
-		{
-			ImGui_ImplDX11_InvalidateDeviceObjects();
-			CleanupRenderTarget();
-			SwapChain->ResizeBuffers(0, (UINT)LOWORD(lParam), (UINT)HIWORD(lParam), DXGI_FORMAT_UNKNOWN, 0);
-			CreateRenderTarget();
-			ImGui_ImplDX11_CreateDeviceObjects();
-		}
-	}
-	*/
 
 	if (uMsg == WM_KEYUP)
 	{
@@ -105,16 +85,15 @@ LRESULT CALLBACK hWndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 }
 
 //==========================================================================================================================
-static bool imGuiInitializing = false;
+
 HRESULT __stdcall hookD3D11ResizeBuffers(IDXGISwapChain *pSwapChain, UINT BufferCount, UINT Width, UINT Height, DXGI_FORMAT NewFormat, UINT SwapChainFlags)
 {
-	imGuiInitializing = true;
 	ImGui_ImplDX11_InvalidateDeviceObjects();
-	CleanupRenderTarget();
+	if (nullptr != RenderTargetView) { RenderTargetView->Release(); RenderTargetView = nullptr; }
+
 	HRESULT toReturn = phookD3D11ResizeBuffers(pSwapChain, BufferCount, Width, Height, NewFormat, SwapChainFlags);
-	//CreateRenderTarget();
+
 	ImGui_ImplDX11_CreateDeviceObjects();
-	imGuiInitializing = false;
 	
 	return toReturn;
 }
@@ -130,7 +109,7 @@ HRESULT __stdcall hookD3D11Present(IDXGISwapChain* pSwapChain, UINT SyncInterval
 		//get device
 		if (SUCCEEDED(pSwapChain->GetDevice(__uuidof(ID3D11Device), (void **)&pDevice)))
 		{
-			SwapChain = pSwapChain;
+			//SwapChain = pSwapChain;
 			pSwapChain->GetDevice(__uuidof(pDevice), (void**)&pDevice);
 			pDevice->GetImmediateContext(&pContext);
 		}
@@ -140,7 +119,8 @@ HRESULT __stdcall hookD3D11Present(IDXGISwapChain* pSwapChain, UINT SyncInterval
 		pSwapChain->GetDesc(&sd);
 		ImGui::CreateContext();
 		ImGuiIO& io = ImGui::GetIO(); (void)io;
-		io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+		ImGui::GetIO().WantCaptureMouse || ImGui::GetIO().WantTextInput || ImGui::GetIO().WantCaptureKeyboard; //control menu with mouse
+		io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;  // Enable Keyboard Controls
 		window = sd.OutputWindow;
 
 		//wndprochandler
@@ -149,127 +129,26 @@ HRESULT __stdcall hookD3D11Present(IDXGISwapChain* pSwapChain, UINT SyncInterval
 		ImGui_ImplWin32_Init(window);
 		ImGui_ImplDX11_Init(pDevice, pContext);
 		ImGui::GetIO().ImeWindowHandle = window;
-		
-		//create wallhacked rasterizer
-		D3D11_RASTERIZER_DESC rasterizer_desc;
-		ZeroMemory(&rasterizer_desc, sizeof(rasterizer_desc));
-		rasterizer_desc.FillMode = D3D11_FILL_SOLID;
-		rasterizer_desc.CullMode = D3D11_CULL_NONE; //D3D11_CULL_FRONT;
-		rasterizer_desc.FrontCounterClockwise = false;
-		float bias = 1000.0f;
-		float bias_float = static_cast<float>(-bias);
-		bias_float /= 10000.0f;
-		rasterizer_desc.DepthBias = DEPTH_BIAS_D32_FLOAT(*(DWORD*)&bias_float); //c
-		rasterizer_desc.SlopeScaledDepthBias = 0.0f;
-		rasterizer_desc.DepthBiasClamp = 0.0f;
-		rasterizer_desc.DepthClipEnable = true;
-		rasterizer_desc.ScissorEnable = false;
-		rasterizer_desc.MultisampleEnable = false;
-		rasterizer_desc.AntialiasedLineEnable = false;
-		hr = pDevice->CreateRasterizerState(&rasterizer_desc, &rDEPTHBIASState);
-		if (FAILED(hr)) { Log("Failed to CreateRasterizerState rasterizer_desc"); }
 
-		//create normal rasterizer
-		D3D11_RASTERIZER_DESC nrasterizer_desc;
-		ZeroMemory(&nrasterizer_desc, sizeof(nrasterizer_desc));
-		nrasterizer_desc.FillMode = D3D11_FILL_SOLID;
-		//nrasterizer_desc.CullMode = D3D11_CULL_BACK; //flickering
-		nrasterizer_desc.CullMode = D3D11_CULL_NONE; 
-		nrasterizer_desc.FrontCounterClockwise = false;
-		nrasterizer_desc.DepthBias = 0.0f;
-		nrasterizer_desc.SlopeScaledDepthBias = 0.0f;
-		nrasterizer_desc.DepthBiasClamp = 0.0f;
-		nrasterizer_desc.DepthClipEnable = true;
-		nrasterizer_desc.ScissorEnable = false;
-		nrasterizer_desc.MultisampleEnable = false;
-		nrasterizer_desc.AntialiasedLineEnable = false;
-		hr = pDevice->CreateRasterizerState(&nrasterizer_desc, &rNORMALState);
-		if (FAILED(hr)) { Log("Failed to CreateRasterizerState nrasterizer_desc"); }
-
-		//create wireframe
-		D3D11_RASTERIZER_DESC rwDesc;
-		pContext->RSGetState(&rWIREFRAMEState);
-		if (rWIREFRAMEState != NULL) {
-			rWIREFRAMEState->GetDesc(&rwDesc);
-			rwDesc.FillMode = D3D11_FILL_WIREFRAME;
-			rwDesc.CullMode = D3D11_CULL_NONE;
-		}
-		else { Log("No RS state set, defaults are in use"); }
-		hr = pDevice->CreateRasterizerState(&rwDesc, &rWIREFRAMEState);
-		if (FAILED(hr)) { Log("Failed to CreateRasterizerState rwDesc"); }
-
-		//solid
-		D3D11_RASTERIZER_DESC rsDesc;
-		pContext->RSGetState(&rSOLIDState);
-		if (rSOLIDState != NULL) {
-			rSOLIDState->GetDesc(&rsDesc);
-			rsDesc.FillMode = D3D11_FILL_SOLID;
-			rsDesc.CullMode = D3D11_CULL_BACK;
-		}
-		else { Log("No RS state set, defaults are in use"); }
-		pDevice->CreateRasterizerState(&rsDesc, &rSOLIDState);
-		if (FAILED(hr)) { Log("Failed to CreateRasterizerState rsDesc"); }
-
-		//create sample state
-		D3D11_SAMPLER_DESC sampDesc;
-		ZeroMemory(&sampDesc, sizeof(sampDesc));
-		sampDesc.Filter = D3D11_FILTER::D3D11_FILTER_MIN_MAG_MIP_LINEAR;
-		sampDesc.AddressU = D3D11_TEXTURE_ADDRESS_CLAMP;
-		sampDesc.AddressV = D3D11_TEXTURE_ADDRESS_CLAMP;
-		sampDesc.AddressW = D3D11_TEXTURE_ADDRESS_CLAMP;
-		sampDesc.ComparisonFunc = D3D11_COMPARISON_ALWAYS;
-		sampDesc.MaxAnisotropy = 1;
-		sampDesc.MinLOD = 0;
-		sampDesc.MaxLOD = D3D11_FLOAT32_MAX;
-		hr = pDevice->CreateSamplerState(&sampDesc, &pSamplerState);
-		if (FAILED(hr)) { Log("Failed to CreateSamplerState"); }
-
-		//create green texture
-		DXGI_FORMAT format = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB; //format
-		static const uint32_t s_pixel = 0xff00ff00; //0xffffffff white, 0xff00ff00 green, 0xffff0000 blue, 0xff0000ff red
-		D3D11_SUBRESOURCE_DATA initData = { &s_pixel, sizeof(uint32_t), 0 };
-		D3D11_TEXTURE2D_DESC desc;
-		memset(&desc, 0, sizeof(desc));
-		desc.Width = desc.Height = desc.MipLevels = desc.ArraySize = 1;
-		desc.Format = format;
-		desc.SampleDesc.Count = 1;
-		desc.Usage = D3D11_USAGE_DEFAULT;// D3D11_USAGE_IMMUTABLE;
-		desc.BindFlags = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
-		hr = pDevice->CreateTexture2D(&desc, &initData, &texGreen);
-		if (FAILED(hr)) { Log("Failed to CreateTexture2D"); }
-
-		//create red texture
-		static const uint32_t s_pixelr = 0xff0000ff; //0xffffffff white, 0xff00ff00 green, 0xffff0000 blue, 0xff0000ff red
-		D3D11_SUBRESOURCE_DATA initDatar = { &s_pixelr, sizeof(uint32_t), 0 };
-		D3D11_TEXTURE2D_DESC descr;
-		memset(&descr, 0, sizeof(descr));
-		descr.Width = descr.Height = descr.MipLevels = descr.ArraySize = 1;
-		descr.Format = format;
-		descr.SampleDesc.Count = 1;
-		descr.Usage = D3D11_USAGE_DEFAULT;// D3D11_USAGE_IMMUTABLE;
-		descr.BindFlags = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
-		hr = pDevice->CreateTexture2D(&descr, &initDatar, &texRed);
-		if (FAILED(hr)) { Log("Failed to CreateTexture2D"); }
-
-		//create green shaderresourceview
-		D3D11_SHADER_RESOURCE_VIEW_DESC SRVDesc;
-		memset(&SRVDesc, 0, sizeof(SRVDesc));
-		SRVDesc.Format = format;
-		SRVDesc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
-		SRVDesc.Texture2D.MipLevels = 1;
-		hr = pDevice->CreateShaderResourceView(texGreen, &SRVDesc, &texSRVgreen);
-		if (FAILED(hr)) { Log("Failed to CreateShaderResourceView"); }
-		texGreen->Release();
-
-		//create red shaderresourceview
-		D3D11_SHADER_RESOURCE_VIEW_DESC SRVDescr;
-		memset(&SRVDescr, 0, sizeof(SRVDescr));
-		SRVDescr.Format = format;
-		SRVDescr.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
-		SRVDescr.Texture2D.MipLevels = 1;
-		hr = pDevice->CreateShaderResourceView(texRed, &SRVDescr, &texSRVred);
-		if (FAILED(hr)) { Log("Failed to CreateShaderResourceView"); }
-		texRed->Release();
+		// Create depthstencil state
+		D3D11_DEPTH_STENCIL_DESC depthStencilDesc;
+		depthStencilDesc.DepthEnable = TRUE;
+		depthStencilDesc.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ALL;
+		depthStencilDesc.DepthFunc = D3D11_COMPARISON_ALWAYS;
+		depthStencilDesc.StencilEnable = FALSE;
+		depthStencilDesc.StencilReadMask = 0xFF;
+		depthStencilDesc.StencilWriteMask = 0xFF;
+		// Stencil operations if pixel is front-facing
+		depthStencilDesc.FrontFace.StencilFailOp = D3D11_STENCIL_OP_KEEP;
+		depthStencilDesc.FrontFace.StencilDepthFailOp = D3D11_STENCIL_OP_INCR;
+		depthStencilDesc.FrontFace.StencilPassOp = D3D11_STENCIL_OP_KEEP;
+		depthStencilDesc.FrontFace.StencilFunc = D3D11_COMPARISON_ALWAYS;
+		// Stencil operations if pixel is back-facing
+		depthStencilDesc.BackFace.StencilFailOp = D3D11_STENCIL_OP_KEEP;
+		depthStencilDesc.BackFace.StencilDepthFailOp = D3D11_STENCIL_OP_DECR;
+		depthStencilDesc.BackFace.StencilPassOp = D3D11_STENCIL_OP_KEEP;
+		depthStencilDesc.BackFace.StencilFunc = D3D11_COMPARISON_ALWAYS;
+		pDevice->CreateDepthStencilState(&depthStencilDesc, &DepthStencilState_FALSE);
 
 		//load cfg settings
 		LoadCfg();
@@ -302,24 +181,6 @@ HRESULT __stdcall hookD3D11Present(IDXGISwapChain* pSwapChain, UINT SyncInterval
 	else //call before you draw
 		pContext->OMSetRenderTargets(1, &RenderTargetView, NULL);
 		
-	//create rendertarget & init imgui
-	//if (!(Flags & DXGI_PRESENT_TEST) && !imGuiInitializing)
-	//{
-	//}
-
-	//create depthstencil states
-	if (createdepthstencil)
-	{
-		createdepthstencil = false; //once
-		CreateDepthStencilStates();
-	}
-
-	//create shaders
-	if (!psRed)
-		GenerateShader(pDevice, &psRed, 1.0f, 0.0f, 0.0f);
-
-	if (!psGreen)
-		GenerateShader(pDevice, &psGreen, 0.0f, 1.0f, 0.0f);
 
 	//imgui
 	ImGui_ImplWin32_NewFrame();
@@ -333,7 +194,7 @@ HRESULT __stdcall hookD3D11Present(IDXGISwapChain* pSwapChain, UINT SyncInterval
 		ImGui::PushStyleColor(ImGuiCol_WindowBg, Bgcol);
 		ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0.2f, 0.2f, 0.2f, 0.8f));
 
-		ImGui::Begin("");
+		ImGui::Begin("title", &greetings, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoInputs);
 		ImGui::Text("Wallhack loaded, press INSERT for menu");
 		ImGui::End();
 
@@ -346,65 +207,41 @@ HRESULT __stdcall hookD3D11Present(IDXGISwapChain* pSwapChain, UINT SyncInterval
 		}
 	}
 
+	//mouse cursor on in menu
+	if (ShowMenu)
+		ImGui::GetIO().MouseDrawCursor = 1;
+	else
+		ImGui::GetIO().MouseDrawCursor = 0;
+
 	//menu
 	if (ShowMenu)
 	{
 		//ImGui::SetNextWindowPos(ImVec2(50.0f, 400.0f)); //pos
-		ImGui::SetNextWindowSize(ImVec2(410.0f, 450.0f)); //size
+		ImGui::SetNextWindowSize(ImVec2(510.0f, 350.0f)); //size
 		ImVec4 Bgcol = ImColor(0.0f, 0.4f, 0.28f, 0.8f); //bg color
 		ImGui::PushStyleColor(ImGuiCol_WindowBg, Bgcol);
 		ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0.2f, 0.2f, 0.2f, 0.8f)); //frame color
 
 		ImGui::Begin("Hack Menu");
-		ImGui::Checkbox("Wallhack", &Wallhack);
-		ImGui::Checkbox("Shader Chams", &ShaderChams);
-		ImGui::Checkbox("Texture Chams", &TextureChams);
-		ImGui::SliderInt("EDepth", &countEdepth, 0, 20);
-		ImGui::SliderInt("RDepth", &countRdepth, 0, 20);
+		ImGui::Checkbox("Wallhack Texture", &Wallhack);
+		ImGui::Checkbox("Delete Texture ", &DeleteTexture); //the point is to highlight textures to see which we are logging
 		ImGui::Checkbox("Modelrec Finder", &ModelrecFinder);
 
 		if (ModelrecFinder)
 		{
-			if (g_Index != g_Vector.size() - 1)
-				g_SelectedAddress = g_Vector[g_Index];
+			ImGui::PushItemWidth(-1);
+			ImGui::SliderInt("find Stride", &countStride, -1, 148);
+			ImGui::SliderInt("find IndexCount", &countIndexCount, -1, 148);
+			ImGui::SliderInt("find pscdesc.ByteWidth", &countpscdescByteWidth, -1, 148);
+			ImGui::SliderInt("find indesc.ByteWidth", &countindescByteWidth, -1, 148);
+			ImGui::SliderInt("find vedesc.ByteWidth", &countvedescByteWidth, -1, 148);
 
-			if (!IsAddressPresent(ReturnAddress))
-				g_Vector.push_back(ReturnAddress);
-
-			ImGui::SliderInt("find Stride", &countStride, -1, 100);
-			ImGui::SliderInt("find IndexCount", &countIndexCount, -1, 100);
-			ImGui::SliderInt("find RetAddr", &g_Index, -1, 10);
-			ImGui::SliderInt("countnum", &countnum, -1, 100);
-
-			ImGui::Text("Use Keys: (ALT + F1) to toggle Wallhack");
-			ImGui::Text("Use Keys: (ALT + F2) to toggle Shader Chams");
-			ImGui::Text("Use Keys: (ALT + F3) to toggle Texture Chams");
-			ImGui::Text("Use Keys (5/6) to find eDepthState");
-			ImGui::Text("Use Keys (7/8) to find rDepthState");
-			ImGui::Text("Use Keys (0/0) to find countnum");
-			ImGui::Text("Press Home to toggle ModelRec finder");
-
-			ImGui::Text("Use Keys (Page Up/Down) to find Stride");
-			ImGui::Text("Press END to log highlated textures");
+			ImGui::Text("ImGui Menu Navigation: ");
+			ImGui::Text("Use TAB & Arrows or Mouse to navigate, Space to select options");
 			ImGui::Text("Press F9 to log draw functions");
-			ImGui::Text("Press F10 to reset settings");
-
-			//need to recreate depthstencil if bruteforce Depth
-			static int old_Evalue = countEdepth;
-			if (countEdepth != old_Evalue)
-			{
-				//Log("countEdepth is different than previous call");
-				createdepthstencil = true; //reload
-			}
-			old_Evalue = countEdepth;
-
-			static int old_Rvalue = countRdepth;
-			if (countRdepth != old_Rvalue)
-			{
-				//Log("countRdepth is different than previous call");
-				createdepthstencil = true; //reload
-			}
-			old_Rvalue = countRdepth;
+			ImGui::Text("Press END to log deleted textures");
+			//ImGui::Text("Use Keys: (ALT + F1) to toggle Wallhack");
+			ImGui::PopItemWidth();
 		}
 		ImGui::End();
 	}
@@ -428,13 +265,13 @@ void __stdcall hookD3D11DrawIndexed(ID3D11DeviceContext* pContext, UINT IndexCou
 	if (veBuffer != NULL)
 		veBuffer->GetDesc(&vedesc);
 	if (veBuffer != NULL) { veBuffer->Release(); veBuffer = NULL; }
-	
+
 	//get indesc.ByteWidth (comment out if not used)
 	pContext->IAGetIndexBuffer(&inBuffer, &inFormat, &inOffset);
 	if (inBuffer != NULL)
 		inBuffer->GetDesc(&indesc);
 	if (inBuffer != NULL) { inBuffer->Release(); inBuffer = NULL; }
-	
+
 	//get pscdesc.ByteWidth (comment out if not used)
 	pContext->PSGetConstantBuffers(pscStartSlot, 1, &pscBuffer);
 	if (pscBuffer != NULL)
@@ -446,114 +283,166 @@ void __stdcall hookD3D11DrawIndexed(ID3D11DeviceContext* pContext, UINT IndexCou
 	if (vscBuffer != NULL)
 		vscBuffer->GetDesc(&vscdesc);
 	if (vscBuffer != NULL) { vscBuffer->Release(); vscBuffer = NULL; }
-	
 
-	//get ret addr
-	ReturnAddress = _ReturnAddress(); //usually not needed
 
-	//get rendertarget
-	pContext->OMGetRenderTargets(D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT, &pRTV[0], &pDSV);
-
-	//get orig depthstencil
-	pContext->OMGetDepthStencilState(&origDepthStencilState, &stencilRef); //get original
-	if(origDepthStencilState && logger) origDepthStencilState->GetDesc(&origdsd);
+	//get original depthstencil
+	if (Wallhack)
+		pContext->OMGetDepthStencilState(&DepthStencilState_ORIG, 0); //get original
 
 	//wallhack/chams
-	if(Wallhack||ShaderChams||TextureChams) //if wallhack/chams option is enabled in menu
+	if (Wallhack) //if wallhack option is enabled in menu
 	//
-	//___________________________________________________________________________________
-	//Model recognition goes here, see your log.txt for the right Stride etc. You may have to do trial and error to see which values work best
-	if ((countnum == pssrStartSlot) || //optional: set countnum to something you want to test or log (pssrStartSlot for example) and use keys 0 and 9 to increase/decrease values
-	(countStride == Stride || countIndexCount == IndexCount / 400) || (ReturnAddress != NULL && g_SelectedAddress != NULL && ReturnAddress == g_SelectedAddress))
-	//___________________________________________________________________________________
-	//
-	//ut4 models
+	//ut4 model recognition example
 	//if ((Stride == 32 && IndexCount == 10155)||(Stride == 44 && IndexCount == 11097)||(Stride == 40 && IndexCount == 11412)||(Stride == 40 && IndexCount == 11487)||(Stride == 44 && IndexCount == 83262)||(Stride == 40 && IndexCount == 23283))
-	//qc models
-	//if (Stride >= 16 && vedesc.ByteWidth >= 14000000 && vedesc.ByteWidth <= 45354840)
-	//al models
-	//if (Stride == 28 && ((DWORD)ReturnAddress & 0x0000FFFF) == 0x00002d02) //0x78022d02
-	{	
-		//depth OFF for wallhack and chams
-		if (Wallhack || ShaderChams || TextureChams)
+	//if (Stride == 40 && pscdesc.ByteWidth == 256 && vscdesc.ByteWidth == 4096 && pssrStartSlot == 0) //swbf2 incomplete
+	//_____________________________________________________________________________________________________________________________________________________________
+	//Model recognition goes here, see your log.txt for the right Stride etc. You may have to do trial and error to see which values work best
+		if ((countnum == pssrStartSlot || countStride == Stride || countIndexCount == IndexCount / 100 || countpscdescByteWidth == pscdesc.ByteWidth / 10 ||
+			countindescByteWidth == indesc.ByteWidth / 1000 || countvedescByteWidth == vedesc.ByteWidth / 10000))
+			//_____________________________________________________________________________________________________________________________________________________________
+			//			
 		{
-			if (rDEPTHBIASState) pContext->RSSetState(rDEPTHBIASState); // set depth bias to do the stencil check in this draw against previously written biased values with same bias
-			if ((eDepthState)countRdepth >= 0 && (eDepthState)countRdepth <= 20) SetDepthStencilState((eDepthState)countRdepth); // read depth buffers with correct comparison func (LESS) but not write them (WRITE_MASK_ZERO)
+			//depth OFF
+			pContext->OMSetDepthStencilState(DepthStencilState_FALSE, 0); //depth off
+
+			phookD3D11DrawIndexed(pContext, IndexCount, StartIndexLocation, BaseVertexLocation); //redraw
+
+			//depth ON
+			pContext->OMSetDepthStencilState(DepthStencilState_ORIG, 0); //depth on
+			SAFE_RELEASE(DepthStencilState_ORIG);
 		}
-		if((eDepthState)countRdepth >= 5 && (eDepthState)countRdepth <= 20)
-		SAFE_RELEASE(myDepthStencilStates[(eDepthState)countRdepth]);
-
-		//shader chams
-		if (ShaderChams)
-		pContext->PSSetShader(psRed, NULL, NULL);
-
-		//texture chams
-		if (TextureChams)
-		{
-			pContext->PSSetShaderResources(0, 1, &texSRVred);
-			pContext->PSSetSamplers(0, 1, &pSamplerState);
-		}
-
-	phookD3D11DrawIndexed(pContext, IndexCount, StartIndexLocation, BaseVertexLocation);
-
-		//depth ON for wallhack and chams
-		if (Wallhack || ShaderChams || TextureChams)
-		{
-			//orig depth on for 0
-			if ((eDepthState)countEdepth == 0)
-				pContext->OMSetDepthStencilState(origDepthStencilState, stencilRef); //orig
-
-			if ((eDepthState)countEdepth >= 1 && (eDepthState)countEdepth <= 20) SetDepthStencilState((eDepthState)countEdepth); //custom
-			if (rNORMALState) pContext->RSSetState(rNORMALState);
-		}
-
-		//shader chams
-		if (ShaderChams)
-		pContext->PSSetShader(psGreen, NULL, NULL);
-
-		//texture chams
-		if (TextureChams)
-		{
-			pContext->PSSetShaderResources(0, 1, &texSRVgreen);
-			pContext->PSSetSamplers(0, 1, &pSamplerState);
-		}
-	
-	phookD3D11DrawIndexed(pContext, IndexCount, StartIndexLocation, BaseVertexLocation); // render state is normal (not biased) here, so it should only draw Green when actually visible
-
-		//depthbias OFF for wallhack and chams
-		if (Wallhack || ShaderChams || TextureChams)
-		if (rDEPTHBIASState) pContext->RSSetState(rDEPTHBIASState);
-
-		pContext->OMSetRenderTargets(0, NULL, pDSV);
-
-	phookD3D11DrawIndexed(pContext, IndexCount, StartIndexLocation, BaseVertexLocation); // finally, make sure the Red (anything) written before gets drawn no matter what by updating the current depth buffer with bias but not the rendertargets to not overdraw again
-		
-		pContext->OMSetRenderTargets(8, pRTV, pDSV);
-
-		//depthbias ON for wallhack and chams
-		if (Wallhack || ShaderChams || TextureChams)
-		if (rNORMALState) pContext->RSSetState(rNORMALState);
-	
-	}
-
-	//in qc stride 16 needs to be erased to make wallhack work
-	//if (sOptions[0].Function == 1)
-	//if (Stride == 16 && IndexCount > 120)
-	//{
-		//return;
-	//}
 
 	//small bruteforce logger
 	if (ShowMenu)
 	{
-		if((countnum == pssrStartSlot)|| //optional: set countnum to something you want to test or log (pssrStartSlot for example) and use keys 0 and 9 to increase/decrease values
-		(countStride == Stride || countIndexCount == IndexCount / 400) || (ReturnAddress != NULL && g_SelectedAddress != NULL && ReturnAddress == g_SelectedAddress))
+		//how to log models:
+		//run the game, inject dll, press insert for menu
+		//0. press F9 to see which drawing function is called by the game
+		//1. select DeleteTexture
+		//2. select Stride and use the slider till an enemy model/texture disappears
+		//3. press END to log the values of that model/texture to log.txt
+		//4. add that Stride number to your model recognition, example if(Stride == 32)
+		//5. next log IndexCount of that model Stride
+		//6. add IndexCount to your model rec, example if(Stride == 32 && IndexCount == 10155)
+		//7. and so on
+
+		if ((countnum == pssrStartSlot || countStride == Stride || countIndexCount == IndexCount / 100 || countpscdescByteWidth == pscdesc.ByteWidth / 10 ||
+			countindescByteWidth == indesc.ByteWidth / 1000 || countvedescByteWidth == vedesc.ByteWidth / 10000))
 			if (GetAsyncKeyState(VK_END) & 1)
-				Log("Stride == %d && IndexCount == %d && indesc.ByteWidth == %d && vedesc.ByteWidth == %d && pscdesc.ByteWidth == %d && vscdesc.ByteWidth == %d && pssrStartSlot == %d && vscStartSlot == %d && countEdepth == %d && countRdepth == %d && ReturnAddress == 0x%X",
-					Stride, IndexCount, indesc.ByteWidth, vedesc.ByteWidth, pscdesc.ByteWidth, vscdesc.ByteWidth, pssrStartSlot, vscStartSlot, countEdepth, countRdepth, ReturnAddress); //Descr.Format, Descr.Buffer.NumElements, texdesc.Format, texdesc.Height, texdesc.Width 
+				Log("Stride == %d && IndexCount == %d && indesc.ByteWidth == %d && vedesc.ByteWidth == %d && pscdesc.ByteWidth == %d && vscdesc.ByteWidth == %d && pssrStartSlot == %d && vscStartSlot == %d",
+					Stride, IndexCount, indesc.ByteWidth, vedesc.ByteWidth, pscdesc.ByteWidth, vscdesc.ByteWidth, pssrStartSlot, vscStartSlot);
+
+		//log specific model
+		//if (Stride == 40 && pscdesc.ByteWidth == 256 && vscdesc.ByteWidth == 4096 && pssrStartSlot == 0)
+		//if (GetAsyncKeyState(VK_F10) & 1)
+		//Log("Stride == %d && IndexCount == %d && indesc.ByteWidth == %d && vedesc.ByteWidth == %d && pscdesc.ByteWidth == %d && vscdesc.ByteWidth == %d && pssrStartSlot == %d && vscStartSlot == %d && Descr.Format == %d && Descr.Buffer.NumElements == %d && texdesc.Format == %d && texdesc.Height == %d && texdesc.Width == %d",
+			//Stride, IndexCount, indesc.ByteWidth, vedesc.ByteWidth, pscdesc.ByteWidth, vscdesc.ByteWidth, pssrStartSlot, vscStartSlot, Descr.Format, Descr.Buffer.NumElements, texdesc.Format, texdesc.Height, texdesc.Width);
+
+		//if delete texture is enabled in menu
+		if (DeleteTexture)
+			if ((countnum == pssrStartSlot || countStride == Stride || countIndexCount == IndexCount / 100 || countpscdescByteWidth == pscdesc.ByteWidth / 10 ||
+				countindescByteWidth == indesc.ByteWidth / 1000 || countvedescByteWidth == vedesc.ByteWidth / 100000))
+				return; //delete texture
+	}
+	return phookD3D11DrawIndexed(pContext, IndexCount, StartIndexLocation, BaseVertexLocation);
+}
+
+//==========================================================================================================================
+
+void __stdcall hookD3D11DrawIndexedInstanced(ID3D11DeviceContext* pContext, UINT IndexCountPerInstance, UINT InstanceCount, UINT StartIndexLocation, INT BaseVertexLocation, UINT StartInstanceLocation)
+{
+	if (GetAsyncKeyState(VK_F9) & 1)
+		Log("DrawIndexedInstanced called");
+
+	//if game is drawing player models in DrawIndexedInstanced, do everything here instead (see code below)
+
+	/*
+	//get stride & vedesc.ByteWidth
+	pContext->IAGetVertexBuffers(0, 1, &veBuffer, &Stride, &veBufferOffset);
+	if (veBuffer != NULL)
+		veBuffer->GetDesc(&vedesc);
+	if (veBuffer != NULL) { veBuffer->Release(); veBuffer = NULL; }
+
+	//get indesc.ByteWidth (comment out if not used)
+	pContext->IAGetIndexBuffer(&inBuffer, &inFormat, &inOffset);
+	if (inBuffer != NULL)
+		inBuffer->GetDesc(&indesc);
+	if (inBuffer != NULL) { inBuffer->Release(); inBuffer = NULL; }
+
+	//get pscdesc.ByteWidth (comment out if not used)
+	pContext->PSGetConstantBuffers(pscStartSlot, 1, &pscBuffer);
+	if (pscBuffer != NULL)
+		pscBuffer->GetDesc(&pscdesc);
+	if (pscBuffer != NULL) { pscBuffer->Release(); pscBuffer = NULL; }
+
+	//get vscdesc.ByteWidth (comment out if not used)
+	pContext->VSGetConstantBuffers(vscStartSlot, 1, &vscBuffer);
+	if (vscBuffer != NULL)
+		vscBuffer->GetDesc(&vscdesc);
+	if (vscBuffer != NULL) { vscBuffer->Release(); vscBuffer = NULL; }
+
+
+	//get original depthstencil
+	if (Wallhack)
+		pContext->OMGetDepthStencilState(&DepthStencilState_ORIG, 0); //get original
+
+	//wallhack/chams
+	if (Wallhack) //if wallhack option is enabled in menu
+	//
+	//ut4 model recognition example
+	//if ((Stride == 32 && IndexCount == 10155)||(Stride == 44 && IndexCount == 11097)||(Stride == 40 && IndexCount == 11412)||(Stride == 40 && IndexCount == 11487)||(Stride == 44 && IndexCount == 83262)||(Stride == 40 && IndexCount == 23283))
+	//if (Stride == 40 && pscdesc.ByteWidth == 256 && vscdesc.ByteWidth == 4096 && pssrStartSlot == 0) //swbf2 incomplete
+	//_____________________________________________________________________________________________________________________________________________________________
+	//Model recognition goes here, see your log.txt for the right Stride etc. You may have to do trial and error to see which values work best
+	if ( (countnum == pssrStartSlot || countStride == Stride || countIndexCount == IndexCountPerInstance / 100 || countpscdescByteWidth == pscdesc.ByteWidth / 10 || 
+	countindescByteWidth == indesc.ByteWidth / 1000|| countvedescByteWidth == vedesc.ByteWidth / 10000) )
+	//_____________________________________________________________________________________________________________________________________________________________
+	//			
+	{
+		//depth OFF
+		pContext->OMSetDepthStencilState(DepthStencilState_FALSE, 0); //depth off
+
+		phookD3D11DrawIndexedInstanced(pContext, IndexCountPerInstance, InstanceCount, StartIndexLocation, BaseVertexLocation, StartInstanceLocation); //redraw
+
+		//depth ON
+		pContext->OMSetDepthStencilState(DepthStencilState_ORIG, 0); //depth on
+		SAFE_RELEASE(DepthStencilState_ORIG);
 	}
 
-	return phookD3D11DrawIndexed(pContext, IndexCount, StartIndexLocation, BaseVertexLocation);
+	//small bruteforce logger
+	if (ShowMenu)
+	{
+		//how to log models:
+		//run the game, inject dll, press insert for menu
+		//0. press F9 to see which drawing function is called by the game
+		//1. select DeleteTexture
+		//2. select Stride and use the slider till an enemy model/texture disappears
+		//3. press END to log the values of that model/texture to log.txt
+		//4. add that Stride number to your model recognition, example if(Stride == 32)
+		//5. next log IndexCount of that model Stride
+		//6. add IndexCount to your model rec, example if(Stride == 32 && IndexCount == 10155)
+		//7. and so on
+
+		if ((countnum == pssrStartSlot || countStride == Stride || countIndexCount == IndexCountPerInstance / 100 || countpscdescByteWidth == pscdesc.ByteWidth / 10 ||
+			countindescByteWidth == indesc.ByteWidth / 1000 || countvedescByteWidth == vedesc.ByteWidth / 10000))
+			if (GetAsyncKeyState(VK_END) & 1)
+				Log("Stride == %d && IndexCountPerInstance == %d && indesc.ByteWidth == %d && vedesc.ByteWidth == %d && pscdesc.ByteWidth == %d && vscdesc.ByteWidth == %d && pssrStartSlot == %d && vscStartSlot == %d",
+					Stride, IndexCountPerInstance, indesc.ByteWidth, vedesc.ByteWidth, pscdesc.ByteWidth, vscdesc.ByteWidth, pssrStartSlot, vscStartSlot);
+
+		//log specific model
+		//if (Stride == 40 && pscdesc.ByteWidth == 256 && vscdesc.ByteWidth == 4096 && pssrStartSlot == 0)
+		//if (GetAsyncKeyState(VK_F10) & 1)
+		//Log("Stride == %d && IndexCountPerInstance == %d && indesc.ByteWidth == %d && vedesc.ByteWidth == %d && pscdesc.ByteWidth == %d && vscdesc.ByteWidth == %d && pssrStartSlot == %d && vscStartSlot == %d && Descr.Format == %d && Descr.Buffer.NumElements == %d && texdesc.Format == %d && texdesc.Height == %d && texdesc.Width == %d",
+			//Stride, IndexCountPerInstance, indesc.ByteWidth, vedesc.ByteWidth, pscdesc.ByteWidth, vscdesc.ByteWidth, pssrStartSlot, vscStartSlot, Descr.Format, Descr.Buffer.NumElements, texdesc.Format, texdesc.Height, texdesc.Width);
+
+		//if delete texture is enabled in menu
+		if(DeleteTexture)
+		if ((countnum == pssrStartSlot || countStride == Stride || countIndexCount == IndexCountPerInstance / 100 || countpscdescByteWidth == pscdesc.ByteWidth / 10 ||
+			countindescByteWidth == indesc.ByteWidth / 1000 || countvedescByteWidth == vedesc.ByteWidth / 100000))
+			return; //delete texture
+	}
+	*/
+	return phookD3D11DrawIndexedInstanced(pContext, IndexCountPerInstance, InstanceCount, StartIndexLocation, BaseVertexLocation, StartInstanceLocation);
 }
 
 //==========================================================================================================================
@@ -562,73 +451,6 @@ void __stdcall hookD3D11PSSetShaderResources(ID3D11DeviceContext* pContext, UINT
 {
 	pssrStartSlot = StartSlot;
 
-	//reset settings
-	if (ShowMenu)
-	{
-		//alt + f1 to toggle wallhack
-		if (GetAsyncKeyState(VK_MENU) && GetAsyncKeyState(VK_F1) & 1)
-			Wallhack = !Wallhack;
-
-		if (GetAsyncKeyState(VK_MENU) && GetAsyncKeyState(VK_F2) & 1)
-			ShaderChams = !ShaderChams;
-
-		if (GetAsyncKeyState(VK_MENU) && GetAsyncKeyState(VK_F3) & 1)
-			TextureChams = !TextureChams;
-
-		if (GetAsyncKeyState(VK_HOME) & 1) //home/pos1
-			ModelrecFinder = !ModelrecFinder;
-
-		//hold down 6 key until a texture is wallhacked
-		if (GetAsyncKeyState(VK_NEXT) & 1) //page down
-			countStride--;
-		if (GetAsyncKeyState(VK_PRIOR) & 1) //page up
-			countStride++;
-
-		//find SetDepthStencilState value (in front of walls)
-		if (GetAsyncKeyState(0x35) & 1) //5-
-		{
-			countEdepth--;
-			createdepthstencil = true;
-		}
-		if (GetAsyncKeyState(0x36) & 1) //6+
-		{
-			countEdepth++;
-			createdepthstencil = true;
-		}
-
-		//find SetDepthStencilState value (behind walls)
-		if (GetAsyncKeyState(0x37) & 1) //7-
-		{
-			countRdepth--;
-			createdepthstencil = true;
-		}
-
-		if (GetAsyncKeyState(0x38) & 1) //8+
-		{
-			countRdepth++;
-			createdepthstencil = true;
-		}
-
-		//increase/decrease countnum
-		if (GetAsyncKeyState(0x39) & 1) //9-
-			countnum--;
-		
-		if (GetAsyncKeyState(0x30) & 1) //0+
-			countnum++;
-
-		if (GetAsyncKeyState(VK_F10) & 1)
-		{
-			Wallhack = 0;
-			ShaderChams = 0;
-			TextureChams = 0;
-			ModelrecFinder = 0;
-			countStride = -1;
-			countIndexCount = -1;
-			countnum = -1;
-			g_Index = -1;
-		}
-	}
-
 	//make menu still usable if WndProc is slow or non-functional
 	if (GetAsyncKeyState(VK_INSERT) & 1)
 	{
@@ -636,13 +458,29 @@ void __stdcall hookD3D11PSSetShaderResources(ID3D11DeviceContext* pContext, UINT
 		ShowMenu = !ShowMenu;
 	}
 
+	//hotkeys
+	if (ShowMenu)
+	{
+		//alt + f1 to toggle wallhack
+		if (GetAsyncKeyState(VK_MENU) && GetAsyncKeyState(VK_F1) & 1)
+			Wallhack = !Wallhack;
+
+		//home/pos1 key to toggle modelrecfinder
+		if (GetAsyncKeyState(VK_HOME) & 1) //home/pos1
+			ModelrecFinder = !ModelrecFinder;
+
+		//hold down pageup key until a texture changes
+		if (GetAsyncKeyState(VK_NEXT) & 1) //page down
+			countStride--;
+		if (GetAsyncKeyState(VK_PRIOR) & 1) //page up
+			countStride++;
+	}
+
 	//on alt tab
 	if (GetAsyncKeyState(VK_MENU) && GetAsyncKeyState(VK_TAB) & 1)
 		ShowMenu = false;
 	if (GetAsyncKeyState(VK_TAB) && GetAsyncKeyState(VK_MENU) & 1)
 		ShowMenu = false;
-
-
 	/*
 	//texture stuff (usually not needed)
 	for (UINT j = 0; j < NumViews; j++)
@@ -651,7 +489,6 @@ void __stdcall hookD3D11PSSetShaderResources(ID3D11DeviceContext* pContext, UINT
 		if (pShaderResView)
 		{
 			pShaderResView->GetDesc(&Descr);
-
 			ID3D11Resource *Resource;
 			pShaderResView->GetResource(&Resource);
 			ID3D11Texture2D *Texture = (ID3D11Texture2D *)Resource;
@@ -662,32 +499,7 @@ void __stdcall hookD3D11PSSetShaderResources(ID3D11DeviceContext* pContext, UINT
 		}
 	}
 	*/
-
-	/*
-	//ALTERNATIVE wallhack example for f'up games, use this if no draw function works for wallhack
-	//if (rDEPTHBIASState) pContext->RSSetState(rDEPTHBIASState); 
-	SetDepthStencilState((eDepthState)countRdepth); //depth on
-	if (Descr.Format == xx)
-	{
-		SetDepthStencilState((eDepthState)countEdepth); //depth off
-		//if (rNORMALState) pContext->RSSetState(rNORMALState);
-		//pContext->PSSetShader(psRed, NULL, NULL);
-	}
-	*/
-
 	return phookD3D11PSSetShaderResources(pContext, StartSlot, NumViews, ppShaderResourceViews);
-}
-
-//==========================================================================================================================
-
-void __stdcall hookD3D11DrawIndexedInstanced(ID3D11DeviceContext* pContext, UINT IndexCountPerInstance, UINT InstanceCount, UINT StartIndexLocation, INT BaseVertexLocation, UINT StartInstanceLocation)
-{
-	if (GetAsyncKeyState(VK_F9) & 1)
-		Log("DrawIndexedInstanced called");
-
-	//if game is drawing player models in DrawIndexedInstanced, do everything here instead (rare)
-
-	return phookD3D11DrawIndexedInstanced(pContext, IndexCountPerInstance, InstanceCount, StartIndexLocation, BaseVertexLocation, StartInstanceLocation);
 }
 
 //==========================================================================================================================
