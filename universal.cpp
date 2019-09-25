@@ -229,7 +229,6 @@ HRESULT __stdcall hookD3D11Present(IDXGISwapChain* pSwapChain, UINT SyncInterval
 
 		if (ModelrecFinder)
 		{
-			ImGui::PushItemWidth(-1);
 			ImGui::SliderInt("find Stride", &countStride, -1, 148);
 			ImGui::SliderInt("find IndexCount", &countIndexCount, -1, 148);
 			ImGui::SliderInt("find pscdesc.ByteWidth", &countpscdescByteWidth, -1, 148);
@@ -241,7 +240,6 @@ HRESULT __stdcall hookD3D11Present(IDXGISwapChain* pSwapChain, UINT SyncInterval
 			ImGui::Text("Press F9 to log draw functions");
 			ImGui::Text("Press END to log deleted textures");
 			//ImGui::Text("Use Keys: (ALT + F1) to toggle Wallhack");
-			ImGui::PopItemWidth();
 		}
 		ImGui::End();
 	}
