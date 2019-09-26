@@ -72,7 +72,6 @@ LRESULT CALLBACK hWndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 			else
 				io.MouseDrawCursor = false;
 		}
-
 	}
 
 	if (ShowMenu)
@@ -217,7 +216,7 @@ HRESULT __stdcall hookD3D11Present(IDXGISwapChain* pSwapChain, UINT SyncInterval
 	if (ShowMenu)
 	{
 		//ImGui::SetNextWindowPos(ImVec2(50.0f, 400.0f)); //pos
-		ImGui::SetNextWindowSize(ImVec2(510.0f, 350.0f)); //size
+		ImGui::SetNextWindowSize(ImVec2(510.0f, 400.0f)); //size
 		ImVec4 Bgcol = ImColor(0.0f, 0.4f, 0.28f, 0.8f); //bg color
 		ImGui::PushStyleColor(ImGuiCol_WindowBg, Bgcol);
 		ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0.2f, 0.2f, 0.2f, 0.8f)); //frame color
@@ -270,7 +269,13 @@ HRESULT __stdcall hookD3D11Present(IDXGISwapChain* pSwapChain, UINT SyncInterval
 			ImGui::Text("Use TAB & Arrows or Mouse to navigate, Space to select options");
 			ImGui::Text("Press F9 to log draw functions");
 			ImGui::Text("Press END to log deleted textures");
-			//ImGui::Text("Use Keys: (ALT + F1) to toggle Wallhack");
+			ImGui::Spacing();
+			ImGui::Text("Hotkeys:");
+			ImGui::Text("ALT + F1 toggles Wallhack");
+			ImGui::Text("ALT + F2 toggles DeleteTexture");
+			ImGui::Text("ALT + F3 toggles ModelrecFinder");
+			ImGui::Text("Use Page Up/Down to find Stride");
+			ImGui::Text("Use 7/8 to find IndexCount");
 		}
 		ImGui::End();
 	}
@@ -494,8 +499,10 @@ void __stdcall hookD3D11PSSetShaderResources(ID3D11DeviceContext* pContext, UINT
 		if (GetAsyncKeyState(VK_MENU) && GetAsyncKeyState(VK_F1) & 1)
 			Wallhack = !Wallhack;
 
-		//home/pos1 key to toggle modelrecfinder
-		if (GetAsyncKeyState(VK_HOME) & 1) //home/pos1
+		if (GetAsyncKeyState(VK_MENU) && GetAsyncKeyState(VK_F2) & 1)
+			DeleteTexture = !DeleteTexture;
+
+		if (GetAsyncKeyState(VK_MENU) && GetAsyncKeyState(VK_F3) & 1)
 			ModelrecFinder = !ModelrecFinder;
 
 		//hold down pageup key until a texture changes
@@ -503,6 +510,11 @@ void __stdcall hookD3D11PSSetShaderResources(ID3D11DeviceContext* pContext, UINT
 			countStride--;
 		if (GetAsyncKeyState(VK_PRIOR) & 1) //page up
 			countStride++;
+
+		if (GetAsyncKeyState(0x37) & 1) //7-
+			countIndexCount--;
+		if (GetAsyncKeyState(0x38) & 1) //8+
+			countIndexCount++;
 	}
 
 	//on alt tab
