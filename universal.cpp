@@ -230,7 +230,38 @@ HRESULT __stdcall hookD3D11Present(IDXGISwapChain* pSwapChain, UINT SyncInterval
 		if (ModelrecFinder)
 		{
 			ImGui::SliderInt("find Stride", &countStride, -1, 148);
-			ImGui::SliderInt("find IndexCount", &countIndexCount, -1, 148);
+
+			if (countIndexCount >= -1 && countIndexCount <= 147)
+			{
+				ImGui::SliderInt("find IndexCount", &countIndexCount, -1, 148);
+			}
+			else if(countIndexCount >= 148 && countIndexCount <= 295)
+			{
+				ImGui::SliderInt("find IndexCount", &countIndexCount, 149, 296);
+			}
+			else if (countIndexCount >= 296 && countIndexCount <= 443)
+			{
+				ImGui::SliderInt("find IndexCount", &countIndexCount, 297, 444);
+			}
+			else if (countIndexCount >= 444 && countIndexCount <= 591)
+			{
+				ImGui::SliderInt("find IndexCount", &countIndexCount, 445, 592);
+			}
+			else if (countIndexCount >= 592 && countIndexCount <= 739)
+			{
+				ImGui::SliderInt("find IndexCount", &countIndexCount, 593, 740);
+			}
+			else if (countIndexCount >= 740 && countIndexCount <= 887)
+			{
+				ImGui::SliderInt("find IndexCount", &countIndexCount, 741, 888);
+			}
+			else if (countIndexCount >= 888 && countIndexCount <= 1035)
+			{
+				ImGui::SliderInt("find IndexCount", &countIndexCount, 889, 1036);
+				if (countIndexCount == 1036)
+					countIndexCount = -1;
+			}
+
 			ImGui::SliderInt("find pscdesc.ByteWidth", &countpscdescByteWidth, -1, 148);
 			ImGui::SliderInt("find indesc.ByteWidth", &countindescByteWidth, -1, 148);
 			ImGui::SliderInt("find vedesc.ByteWidth", &countvedescByteWidth, -1, 148);
@@ -354,7 +385,7 @@ void __stdcall hookD3D11DrawIndexedInstanced(ID3D11DeviceContext* pContext, UINT
 
 	//if game is drawing player models in DrawIndexedInstanced, do everything here instead (see code below)
 
-	/*
+	
 	//get stride & vedesc.ByteWidth
 	pContext->IAGetVertexBuffers(0, 1, &veBuffer, &Stride, &veBufferOffset);
 	if (veBuffer != NULL)
@@ -439,7 +470,7 @@ void __stdcall hookD3D11DrawIndexedInstanced(ID3D11DeviceContext* pContext, UINT
 			countindescByteWidth == indesc.ByteWidth / 1000 || countvedescByteWidth == vedesc.ByteWidth / 100000))
 			return; //delete texture
 	}
-	*/
+	
 	return phookD3D11DrawIndexedInstanced(pContext, IndexCountPerInstance, InstanceCount, StartIndexLocation, BaseVertexLocation, StartInstanceLocation);
 }
 
