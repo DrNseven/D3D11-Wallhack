@@ -4,15 +4,20 @@
 
 //features deafult settings
 bool ModelrecFinder = true;
-bool Wallhack=true;
+int Wallhack=1;
 bool DeleteTexture = true;
 
 //init only once
 bool firstTime = true; 
 
 //wh
-ID3D11DepthStencilState* DepthStencilState_ORIG = NULL; //depth on
 ID3D11DepthStencilState* DepthStencilState_FALSE = NULL; //depth off
+ID3D11DepthStencilState* DepthStencilState_ORIG = NULL; //depth on
+
+ID3D11RasterizerState* DEPTHBIASState_FALSE;
+ID3D11RasterizerState* DEPTHBIASState_TRUE;
+ID3D11RasterizerState* DEPTHBIASState_ORIG;
+#define DEPTH_BIAS_D32_FLOAT(d) (d/(1/pow(2,23)))
 
 //viewport
 UINT vps = 1;

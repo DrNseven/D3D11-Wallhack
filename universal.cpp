@@ -149,6 +149,40 @@ HRESULT __stdcall hookD3D11Present(IDXGISwapChain* pSwapChain, UINT SyncInterval
 		depthStencilDesc.BackFace.StencilFunc = D3D11_COMPARISON_ALWAYS;
 		pDevice->CreateDepthStencilState(&depthStencilDesc, &DepthStencilState_FALSE);
 
+		//create depthbias rasterizer state
+		D3D11_RASTERIZER_DESC rasterizer_desc;
+		ZeroMemory(&rasterizer_desc, sizeof(rasterizer_desc));
+		rasterizer_desc.FillMode = D3D11_FILL_SOLID;
+		rasterizer_desc.CullMode = D3D11_CULL_NONE; //D3D11_CULL_FRONT;
+		rasterizer_desc.FrontCounterClockwise = false;
+		float bias = 1000.0f;
+		float bias_float = static_cast<float>(-bias);
+		bias_float /= 10000.0f;
+		rasterizer_desc.DepthBias = DEPTH_BIAS_D32_FLOAT(*(DWORD*)&bias_float);
+		rasterizer_desc.SlopeScaledDepthBias = 0.0f;
+		rasterizer_desc.DepthBiasClamp = 0.0f;
+		rasterizer_desc.DepthClipEnable = true;
+		rasterizer_desc.ScissorEnable = false;
+		rasterizer_desc.MultisampleEnable = false;
+		rasterizer_desc.AntialiasedLineEnable = false;
+		pDevice->CreateRasterizerState(&rasterizer_desc, &DEPTHBIASState_FALSE);
+		
+		//create normal rasterizer state
+		D3D11_RASTERIZER_DESC nrasterizer_desc;
+		ZeroMemory(&nrasterizer_desc, sizeof(nrasterizer_desc));
+		nrasterizer_desc.FillMode = D3D11_FILL_SOLID;
+		//nrasterizer_desc.CullMode = D3D11_CULL_BACK; //flickering
+		nrasterizer_desc.CullMode = D3D11_CULL_NONE;
+		nrasterizer_desc.FrontCounterClockwise = false;
+		nrasterizer_desc.DepthBias = 0.0f;
+		nrasterizer_desc.SlopeScaledDepthBias = 0.0f;
+		nrasterizer_desc.DepthBiasClamp = 0.0f;
+		nrasterizer_desc.DepthClipEnable = true;
+		nrasterizer_desc.ScissorEnable = false;
+		nrasterizer_desc.MultisampleEnable = false;
+		nrasterizer_desc.AntialiasedLineEnable = false;
+		pDevice->CreateRasterizerState(&nrasterizer_desc, &DEPTHBIASState_TRUE);
+		
 		//load cfg settings
 		LoadCfg();
 	}
@@ -222,7 +256,13 @@ HRESULT __stdcall hookD3D11Present(IDXGISwapChain* pSwapChain, UINT SyncInterval
 		ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0.2f, 0.2f, 0.2f, 0.8f)); //frame color
 
 		ImGui::Begin("Hack Menu");
-		ImGui::Checkbox("Wallhack Texture", &Wallhack);
+		//ImGui::Checkbox("Wallhack Texture", &Wallhack);
+
+		const char* Wallhack_Options[] = { "Off", "DepthStencil", "DepthBias" };
+		ImGui::Text("Wallhack Texture");
+		ImGui::SameLine();
+		ImGui::Combo("##Wallhack", (int*)&Wallhack, Wallhack_Options, IM_ARRAYSIZE(Wallhack_Options));
+
 		ImGui::Checkbox("Delete Texture ", &DeleteTexture); //the point is to highlight textures to see which we are logging
 		ImGui::Checkbox("Modelrec Finder", &ModelrecFinder);
 
@@ -319,12 +359,8 @@ void __stdcall hookD3D11DrawIndexed(ID3D11DeviceContext* pContext, UINT IndexCou
 	if (vscBuffer != NULL) { vscBuffer->Release(); vscBuffer = NULL; }
 
 
-	//get original depthstencil
-	if (Wallhack)
-		pContext->OMGetDepthStencilState(&DepthStencilState_ORIG, 0); //get original
-
 	//wallhack/chams
-	if (Wallhack) //if wallhack option is enabled in menu
+	if (Wallhack==1||Wallhack==2) //if wallhack option is enabled in menu
 	//
 	//ut4 model recognition example
 	//if ((Stride == 32 && IndexCount == 10155)||(Stride == 44 && IndexCount == 11097)||(Stride == 40 && IndexCount == 11412)||(Stride == 40 && IndexCount == 11487)||(Stride == 44 && IndexCount == 83262)||(Stride == 40 && IndexCount == 23283))
@@ -336,14 +372,31 @@ void __stdcall hookD3D11DrawIndexed(ID3D11DeviceContext* pContext, UINT IndexCou
 			//_____________________________________________________________________________________________________________________________________________________________
 			//			
 		{
-			//depth OFF
-			pContext->OMSetDepthStencilState(DepthStencilState_FALSE, 0); //depth off
+			//get orig
+			if (Wallhack == 1)
+				pContext->OMGetDepthStencilState(&DepthStencilState_ORIG, 0); //get original
+
+			//set off
+			if(Wallhack==1)
+				pContext->OMSetDepthStencilState(DepthStencilState_FALSE, 0); //depthstencil off
+
+			//set off
+			if(Wallhack==2)
+				pContext->RSSetState(DEPTHBIASState_FALSE); //depthbias off
 
 			phookD3D11DrawIndexed(pContext, IndexCount, StartIndexLocation, BaseVertexLocation); //redraw
 
-			//depth ON
-			pContext->OMSetDepthStencilState(DepthStencilState_ORIG, 0); //depth on
-			SAFE_RELEASE(DepthStencilState_ORIG);
+			//restore orig
+			if (Wallhack == 1)
+				pContext->OMSetDepthStencilState(DepthStencilState_ORIG, 0); //depthstencil on
+
+			//set on (we set true instead of restoring original to get alternative wallhack effect)
+			if (Wallhack == 2)
+				pContext->RSSetState(DEPTHBIASState_TRUE); //depthbias true
+
+			//release
+			if (Wallhack == 1)
+				SAFE_RELEASE(DepthStencilState_ORIG); //release
 		}
 
 	//small bruteforce logger
@@ -416,12 +469,8 @@ void __stdcall hookD3D11DrawIndexedInstanced(ID3D11DeviceContext* pContext, UINT
 	if (vscBuffer != NULL) { vscBuffer->Release(); vscBuffer = NULL; }
 
 
-	//get original depthstencil
-	if (Wallhack)
-		pContext->OMGetDepthStencilState(&DepthStencilState_ORIG, 0); //get original
-
 	//wallhack/chams
-	if (Wallhack) //if wallhack option is enabled in menu
+	if (Wallhack==1||Wallhack==2) //if wallhack option is enabled in menu
 	//
 	//ut4 model recognition example
 	//if ((Stride == 32 && IndexCount == 10155)||(Stride == 44 && IndexCount == 11097)||(Stride == 40 && IndexCount == 11412)||(Stride == 40 && IndexCount == 11487)||(Stride == 44 && IndexCount == 83262)||(Stride == 40 && IndexCount == 23283))
@@ -433,14 +482,31 @@ void __stdcall hookD3D11DrawIndexedInstanced(ID3D11DeviceContext* pContext, UINT
 	//_____________________________________________________________________________________________________________________________________________________________
 	//			
 	{
-		//depth OFF
-		pContext->OMSetDepthStencilState(DepthStencilState_FALSE, 0); //depth off
+		//get orig
+		if (Wallhack == 1)
+			pContext->OMGetDepthStencilState(&DepthStencilState_ORIG, 0); //get original
+
+		//set off
+		if (Wallhack == 1)
+			pContext->OMSetDepthStencilState(DepthStencilState_FALSE, 0); //depthstencil off
+
+		//set off
+		if (Wallhack == 2)
+			pContext->RSSetState(DEPTHBIASState_FALSE); //depthbias off
 
 		phookD3D11DrawIndexedInstanced(pContext, IndexCountPerInstance, InstanceCount, StartIndexLocation, BaseVertexLocation, StartInstanceLocation); //redraw
 
-		//depth ON
-		pContext->OMSetDepthStencilState(DepthStencilState_ORIG, 0); //depth on
-		SAFE_RELEASE(DepthStencilState_ORIG);
+		//restore orig
+		if (Wallhack == 1)
+			pContext->OMSetDepthStencilState(DepthStencilState_ORIG, 0); //depthstencil on
+
+		//set on (we set true instead of restoring original to get alternative wallhack effect)
+		if (Wallhack == 2)
+			pContext->RSSetState(DEPTHBIASState_TRUE); //depthbias true
+
+		//release
+		if (Wallhack == 1)
+			SAFE_RELEASE(DepthStencilState_ORIG); //release
 	}
 
 	//small bruteforce logger
@@ -496,8 +562,15 @@ void __stdcall hookD3D11PSSetShaderResources(ID3D11DeviceContext* pContext, UINT
 	if (ShowMenu)
 	{
 		//alt + f1 to toggle wallhack
+		//if (GetAsyncKeyState(VK_MENU) && GetAsyncKeyState(VK_F1) & 1)
+			//Wallhack = !Wallhack;
+
+		//alt + f1 to toggle three options off, wallhack1, wallhack2
 		if (GetAsyncKeyState(VK_MENU) && GetAsyncKeyState(VK_F1) & 1)
-			Wallhack = !Wallhack;
+		{
+			Wallhack++;
+			if (Wallhack > 2) Wallhack = 0;
+		}
 
 		if (GetAsyncKeyState(VK_MENU) && GetAsyncKeyState(VK_F2) & 1)
 			DeleteTexture = !DeleteTexture;
